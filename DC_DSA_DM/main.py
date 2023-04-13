@@ -296,32 +296,21 @@ def main():
         accs = accs_all_exps[key]
         print("Default Accuracy")
         print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-        # wandb.log({'Final_Accuracy_default/{}'.format(model_eval): np.mean(accs)})
-        # wandb.log({'Final_Std_default/{}'.format(model_eval): np.std(accs)})
 
         accs = accs_Flip_all_exps[key]
         print("Flip Accuracy")
         print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-        # wandb.log({'Final_Accuracy_Flip/{}'.format(model_eval): np.mean(accs)})
-        # wandb.log({'Final_Std_default/{}'.format(model_eval): np.std(accs)})
 
         accs = accs_FlipBatch_all_exps[key]
         print("FlipBatch Accuracy")
         print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-        # wandb.log({'Final_Accuracy_FlipBatch/{}'.format(model_eval): np.mean(accs)})
-        # wandb.log({'Final_Std_default/{}'.format(model_eval): np.std(accs)})
 
         # log the final accuracy
-        data = [["Default", np.mean(accs_all_exps[key])], ["Flip", np.mean(accs_Flip_all_exps[key])], ["FlipBatch", np.mean(accs_FlipBatch_all_exps[key])]]
+        data = [[f"Default_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)],
+                 ["Flip_{key}", '%.2f (%.2f)'%(np.mean(accs_Flip_all_exps[key])*100, np.std(accs_Flip_all_exps[key])*100)],
+                 ["FlipBatch_{key}", '%.2f (%.2f)'%(np.mean(accs_FlipBatch_all_exps[key])*100, np.std(accs_FlipBatch_all_exps[key])*100)]]
         table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
-        wandb.log({"Final Accuracy" : wandb.plot.bar(table, "Evaluation", "Accuracy",
-                                    title="Final evaluation of {}".format(model_eval))})
-        
-        # log the final std
-        data = [["Default", np.std(accs_all_exps[key])], ["Flip", np.std(accs_Flip_all_exps[key])], ["FlipBatch", np.std(accs_FlipBatch_all_exps[key])]]
-        table = wandb.Table(data=data, columns = ["Evaluation", "Std"])
-        wandb.log({"Final Std" : wandb.plot.bar(table, "Evaluation", "Std",
-                                    title="Final evaluation of {}".format(model_eval))})
+        wandb.log({"Final Results_{key}" : table})
         
     wandb.finish()
 
