@@ -203,8 +203,8 @@ def main():
                     image_syn_vis[:, ch] = image_syn_vis[:, ch]  * std[ch] + mean[ch]
                 image_syn_vis[image_syn_vis<0] = 0.0
                 image_syn_vis[image_syn_vis>1] = 1.0
-                save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
-                wandb.log({"Synthetic_Images": wandb.Image(make_grid(image_syn_vis, nrow=args.ipc))}, step=exp)
+                save_image(image_syn_vis, save_name, nrow=10) # Trying normalize = True/False may get better visual effects.
+                wandb.log({"Synthetic_Images": wandb.Image(make_grid(image_syn_vis, nrow=10))}, step=exp)
 
 
             ''' Train synthetic data '''
