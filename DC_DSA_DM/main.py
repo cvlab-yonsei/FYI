@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug', type=str, default=None, help='type of the batch augmentation')
+    parser.add_argument('--flip_real', type=bool, default=False, help='Flip real batch or not')
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
@@ -247,6 +248,8 @@ def main():
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
 
                     img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug)
+                    if args.flip_real:
+                        img_real, lab_real = BatchAug(img_real, lab_real, 'Flip')
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
