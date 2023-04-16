@@ -5,8 +5,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torchvision.utils import save_image
+from torchvision.utils import save_image, make_grid
 from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
+import wandb
 
 
 def main():
@@ -27,33 +28,83 @@ def main():
     parser.add_argument('--init', type=str, default='real', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--dsa_strategy', type=str, default='color_crop_cutout_flip_scale_rotate', help='differentiable Siamese augmentation strategy')
     parser.add_argument('--data_path', type=str, default='data', help='dataset path')
-    parser.add_argument('--save_path', type=str, default='result', help='path to save results')
     parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric')
+    parser.add_argument('--device', type=str, default='0', help='device number')
+    parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
+    parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
+    parser.add_argument('--batch_aug', type=str, default=None, help='type of the batch augmentation')
+    parser.add_argument('--flip_real', type=bool, default=False, help='Flip real batch or not')
 
     args = parser.parse_args()
     args.method = 'DM'
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
+    # Set device
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
 
+    # Reduce batch size if batch augmentation is used
+    if args.batch_aug == 'FlipBatch':
+        args.batch_train = args.batch_train//2
+
+    # Downloading should be already done
     if not os.path.exists(args.data_path):
-        os.mkdir(args.data_path)
+        raise Exception('Wrong data directory')
 
+    args.save_path = './logs/' + args.run_name
+
+    # Create save directory
     if not os.path.exists(args.save_path):
-        os.mkdir(args.save_path)
+        os.makedirs(args.save_path)
 
-    eval_it_pool = np.arange(0, args.Iteration+1, 2000).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
+    eval_it_pool = [args.Iteration] # The list of iterations when we evaluate models and record results.
     print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
 
     accs_all_exps = dict() # record performances of all experiments
+    accs_Flip_all_exps = dict() # record performances of all experiments
+    accs_FlipBatch_all_exps = dict() # record performances of all experiments
     for key in model_eval_pool:
         accs_all_exps[key] = []
+        accs_Flip_all_exps[key] = []
+        accs_FlipBatch_all_exps[key] = []
 
     data_save = []
+
+    dsa_params = args.dsa_param
+
+    wandb.init(sync_tensorboard=False,
+               project="DatasetDistillation",
+               job_type="CleanRepo",
+               config=args,
+               tags=args.run_tags.split('_')
+               )
+    if args.run_name is not None:
+        wandb.run.name = args.run_name
+
+    args = type('', (), {})()
+
+    for key in wandb.config._items:
+        setattr(args, key, wandb.config._items[key])
+
+    args.dsa_param = dsa_params
+
+    def BatchAug(img, batch_aug=None):
+        # img: (N, C, H, W)
+        if batch_aug is None:
+            return img
+        # Best
+        elif batch_aug == 'FlipBatch':
+            img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+            return img
+        elif batch_aug == 'Flip':
+            randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
+            return img
+        else:
+            raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
 
 
     for exp in range(args.num_exp):
@@ -105,6 +156,8 @@ def main():
 
         for it in range(args.Iteration+1):
 
+            wandb.log({"Progress": exp}, step=exp)
+
             ''' Evaluate synthetic data '''
             if it in eval_it_pool:
                 for model_eval in model_eval_pool:
@@ -120,9 +173,31 @@ def main():
                         _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
                         accs.append(acc_test)
                     print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                    wandb.log({'Accuracy_default/{}'.format(model_eval): np.mean(accs)}, step=exp)
+                    wandb.log({'Std_default/{}'.format(model_eval): np.std(accs)}, step=exp)
+
+                    accs_Flip = []
+                    for it_eval in range(args.num_eval):
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                        _, acc_train, acc_Flip = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='Flip')
+                        accs_Flip.append(acc_Flip)
+                    wandb.log({'Accuracy_flip/{}'.format(model_eval): np.mean(accs_Flip)}, step=exp)
+                    wandb.log({'Std_flip/{}'.format(model_eval): np.std(accs_Flip)}, step=exp)
+
+                    accs_FlipBatch = []
+                    for it_eval in range(args.num_eval):
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                        _, acc_train, acc_FlipBatch = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='FlipBatch')
+                        accs_FlipBatch.append(acc_FlipBatch)
+                    wandb.log({'Accuracy_flipBatch/{}'.format(model_eval): np.mean(accs_FlipBatch)}, step=exp)
+                    wandb.log({'Std_flipBatch/{}'.format(model_eval): np.std(accs_FlipBatch)}, step=exp)
 
                     if it == args.Iteration: # record the final results
                         accs_all_exps[model_eval] += accs
+                        accs_Flip_all_exps[model_eval] += accs_Flip
+                        accs_FlipBatch_all_exps[model_eval] += accs_FlipBatch
 
                 ''' visualize and save '''
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
@@ -131,7 +206,8 @@ def main():
                     image_syn_vis[:, ch] = image_syn_vis[:, ch]  * std[ch] + mean[ch]
                 image_syn_vis[image_syn_vis<0] = 0.0
                 image_syn_vis[image_syn_vis>1] = 1.0
-                save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
+                save_image(image_syn_vis, save_name, nrow=10) # Trying normalize = True/False may get better visual effects.
+                wandb.log({"Synthetic_Images": wandb.Image(make_grid(image_syn_vis, nrow=10))}, step=exp)
 
 
 
@@ -152,6 +228,10 @@ def main():
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
 
+                    img_syn= BatchAug(img_syn, args.batch_aug)
+                    if args.flip_real:
+                        img_real = BatchAug(img_real, 'Flip')
+
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
                         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
@@ -169,6 +249,10 @@ def main():
                 for c in range(num_classes):
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
+
+                    img_syn= BatchAug(img_syn, args.batch_aug)
+                    if args.flip_real:
+                        img_real = BatchAug(img_real, 'Flip')
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
@@ -207,8 +291,25 @@ def main():
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:
         accs = accs_all_exps[key]
+        print("Default Accuracy")
         print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
+        accs = accs_Flip_all_exps[key]
+        print("Flip Accuracy")
+        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
+
+        accs = accs_FlipBatch_all_exps[key]
+        print("FlipBatch Accuracy")
+        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
+
+        # log the final accuracy
+        data = [[f"Default_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)],
+                 ["Flip_{key}", '%.2f (%.2f)'%(np.mean(accs_Flip_all_exps[key])*100, np.std(accs_Flip_all_exps[key])*100)],
+                 ["FlipBatch_{key}", '%.2f (%.2f)'%(np.mean(accs_FlipBatch_all_exps[key])*100, np.std(accs_FlipBatch_all_exps[key])*100)]]
+        table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
+        wandb.log({"Final Results_{key}" : table})
+        
+    wandb.finish()
 
 
 if __name__ == '__main__':
