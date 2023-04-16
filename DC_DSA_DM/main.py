@@ -310,10 +310,10 @@ def main():
 
         # log the final accuracy
         data = [[f"Default_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)],
-                 ["Flip_{key}", '%.2f (%.2f)'%(np.mean(accs_Flip_all_exps[key])*100, np.std(accs_Flip_all_exps[key])*100)],
-                 ["FlipBatch_{key}", '%.2f (%.2f)'%(np.mean(accs_FlipBatch_all_exps[key])*100, np.std(accs_FlipBatch_all_exps[key])*100)]]
+                 [f"Flip_{key}", '%.2f (%.2f)'%(np.mean(accs_Flip_all_exps[key])*100, np.std(accs_Flip_all_exps[key])*100)],
+                 [f"FlipBatch_{key}", '%.2f (%.2f)'%(np.mean(accs_FlipBatch_all_exps[key])*100, np.std(accs_FlipBatch_all_exps[key])*100)]]
         table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
-        wandb.log({"Final Results_{key}" : table})
+        wandb.log({f"Final Results_{key}" : table})
         
     wandb.finish()
 

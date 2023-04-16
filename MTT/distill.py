@@ -273,8 +273,8 @@ def main(args):
 
                 if it == args.Iteration:
                     data = [[f"Default", '%.2f (%.2f)'%(acc_test_mean*100, acc_test_std*100)],
-                            ["Flip", '%.2f (%.2f)'%(acc_flip_mean*100, acc_flip_std*100)],
-                            ["FlipBatch", '%.2f (%.2f)'%(acc_flipBatch_mean*100, acc_flipBatch_std*100)]]
+                            [f"Flip", '%.2f (%.2f)'%(acc_flip_mean*100, acc_flip_std*100)],
+                            [f"FlipBatch", '%.2f (%.2f)'%(acc_flipBatch_mean*100, acc_flipBatch_std*100)]]
                     table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
                     wandb.log({"Final Results" : table})
 
