@@ -302,8 +302,13 @@ def BatchAug(img, lab, batch_aug=None):
     
     if batch_aug is None:
         return img, lab
-    # Best
+
     elif batch_aug == 'FlipBatch':
+        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+        lab = torch.cat([lab, lab], dim=0)
+        return img, lab
+    
+    elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
         img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
@@ -312,40 +317,7 @@ def BatchAug(img, lab, batch_aug=None):
         randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
         img = torch.where(randf < 0.5, img.flip(3), img)
         return img, lab
-    
-    # elif args.batch_aug == 'RandBatch':
-    #     img = torch.cat([img, DiffAugment(img, args.dsa_strategy, param=args.dsa_param)], dim=0)
-    #     lab = torch.cat([lab, lab], dim=0)
-    #     return img, lab
-    
-    # elif args.batch_aug == 'TransBatch':
-    #     img = torch.cat([img, DiffAugment(img, 'color_flip_scale_rotate', param=args.dsa_param)], dim=0)
-    #     lab = torch.cat([lab, lab], dim=0)
-    #     return img, lab
-    
-    # elif args.batch_aug == 'ParamBatch':
-    #     img = torch.cat([img, DiffAugment(img, 'color_flip_scale_rotate', param=args.ba_param)], dim=0)
-    #     lab = torch.cat([lab, lab], dim=0)
-    #     return img, lab
-    
-    # elif args.batch_aug == 'FSRBatch':
-    #     img = torch.cat([img, torch.flip(img, dims=[-1]), rand_scale(img, args.dsa_param), rand_rotate(img, args.dsa_param)], dim=0)
-    #     lab = torch.cat([lab, lab, lab, lab], dim=0)
-    #     return img, lab
-    
-    # # Do not converge (negative learning rate)
-    # elif args.batch_aug == 'FixedScaleBatch':
-    #     img = torch.cat([img, fixed_scale(img, 1.2)], dim=0)
-    #     lab = torch.cat([lab, lab], dim=0)
-    #     return img, lab
-    
-    # elif args.batch_aug == 'StitchBatch':
-    #     flipped = torch.flip(img, dims=[-1])
-    #     img = torch.cat([torch.cat([img[:,:,:,:img.size(-1)//2], flipped[:,:,:,flipped.size(-1)//2:]], dim=-1),
-    #                      torch.cat([flipped[:,:,:,:flipped.size(-1)//2], img[:,:,:,img.size(-1)//2:]], dim=-1)], dim=0)
-    #     lab = torch.cat([lab, lab], dim=0)
-    #     return img, lab
-    
+
     else:
         raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
 

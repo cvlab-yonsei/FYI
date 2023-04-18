@@ -298,8 +298,13 @@ def BatchAug(img, lab, batch_aug=None):
     
     if batch_aug is None:
         return img, lab
-    # Best
+
     elif batch_aug == 'FlipBatch':
+        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+        lab = torch.cat([lab, lab], dim=0)
+        return img, lab
+    
+    elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
         img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
