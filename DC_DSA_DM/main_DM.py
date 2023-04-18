@@ -182,6 +182,7 @@ def main():
                         image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
                         _, acc_train, acc_Flip = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='Flip')
                         accs_Flip.append(acc_Flip)
+                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_Flip), model_eval, np.mean(accs_Flip), np.std(accs_Flip)))
                     wandb.log({'Accuracy_flip/{}'.format(model_eval): np.mean(accs_Flip)}, step=exp)
                     wandb.log({'Std_flip/{}'.format(model_eval): np.std(accs_Flip)}, step=exp)
 
@@ -191,6 +192,7 @@ def main():
                         image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
                         _, acc_train, acc_FlipBatch = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='FlipBatch')
                         accs_FlipBatch.append(acc_FlipBatch)
+                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_FlipBatch), model_eval, np.mean(accs_FlipBatch), np.std(accs_FlipBatch)))
                     wandb.log({'Accuracy_flipBatch/{}'.format(model_eval): np.mean(accs_FlipBatch)}, step=exp)
                     wandb.log({'Std_flipBatch/{}'.format(model_eval): np.std(accs_FlipBatch)}, step=exp)
 
