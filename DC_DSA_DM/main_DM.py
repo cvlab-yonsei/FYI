@@ -100,6 +100,9 @@ def main():
         elif batch_aug == 'FlipBatch':
             img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
             return img
+        elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
+            img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+            return img
         elif batch_aug == 'Flip':
             randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
             return img
