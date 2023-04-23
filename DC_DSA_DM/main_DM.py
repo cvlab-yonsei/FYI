@@ -97,10 +97,7 @@ def main():
         if batch_aug is None:
             return img
         # Best
-        elif batch_aug == 'FlipBatch':
-            img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-            return img
-        elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
+        elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
             img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
             return img
         elif batch_aug == 'Flip':
