@@ -299,12 +299,7 @@ def BatchAug(img, lab, batch_aug=None):
     if batch_aug is None:
         return img, lab
 
-    elif batch_aug == 'FlipBatch':
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-        lab = torch.cat([lab, lab], dim=0)
-        return img, lab
-    
-    elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
+    elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
         img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
@@ -322,6 +317,9 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug=None
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)
+
+    if batch_aug == 'FlipBatchSyn':
+        batch_aug = 'Flip'
 
     if mode == 'train':
         net.train()
