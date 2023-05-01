@@ -6,8 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.utils
 from tqdm import tqdm
-from utils import get_dataset, get_network, get_eval_pool, evaluate_synset, get_time, DiffAugment, ParamDiffAug,\
-      BatchAug, BatchDiffAug
+from utils import get_dataset, get_network, get_eval_pool, evaluate_synset, get_time, DiffAugment, ParamDiffAug, BatchAug, BatchDiffAug
 import wandb
 import copy
 import random
@@ -31,6 +30,7 @@ def main(args):
 
     args.dsa = True if args.dsa == 'True' else False
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    eval_method = args.eval_method.split('_')
 
     eval_it_pool = np.arange(0, args.Iteration + 1, args.eval_it).tolist()
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader, loader_train_dict, class_map, class_map_inv = get_dataset(args.dataset, args.data_path, args.batch_real, args.subset, args=args)
@@ -53,7 +53,7 @@ def main(args):
     args.dsa_param = ParamDiffAug()
     args.ba_param = BatchDiffAug()
 
-    if args.batch_aug in ['FlipBatch', 'RandBatch', 'TransBatch']:
+    if args.batch_aug in ['FlipBatch']:
         args.batch_train = args.batch_train//2
 
     dsa_params = args.dsa_param
@@ -188,9 +188,9 @@ def main(args):
             buffer = buffer[:args.max_experts]
         random.shuffle(buffer)
 
-    best_acc = {m: 0 for m in model_eval_pool}
+    best_acc = {method: {m: 0 for m in model_eval_pool} for method in eval_method}
 
-    best_std = {m: 0 for m in model_eval_pool}
+    best_std = {method: {m: 0 for m in model_eval_pool} for method in eval_method}
 
     for it in range(0, args.Iteration+1):
         save_this_it = False
@@ -201,82 +201,41 @@ def main(args):
         if it in eval_it_pool:
             for model_eval in model_eval_pool:
                 print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
-                if args.dsa:
-                    print('DSA augmentation strategy: \n', args.dsa_strategy)
-                    print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
-                else:
-                    print('DC augmentation parameters: \n', args.dc_aug_param)
+                for method in eval_method:
+                    print('Evaluation method: %s'%method)
+                    if args.dsa:
+                        print('DSA augmentation strategy: \n', args.dsa_strategy)
+                        print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
+                    else:
+                        print('DC augmentation parameters: \n', args.dc_aug_param)
 
-                accs_test = []
-                accs_train = []
-                for it_eval in range(args.num_eval):
-                    net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                    accs_test = []
+                    accs_train = []
+                    for it_eval in range(args.num_eval):
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
 
-                    eval_labs = label_syn
-                    with torch.no_grad():
-                        image_save = image_syn
-                    image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
+                        eval_labs = label_syn
+                        with torch.no_grad():
+                            image_save = image_syn
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
 
-                    args.lr_net = syn_lr.item()
-                    _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture)
-                    accs_test.append(acc_test)
-                    accs_train.append(acc_train)
-                accs_test = np.array(accs_test)
-                accs_train = np.array(accs_train)
-                acc_test_mean = np.mean(accs_test)
-                acc_test_std = np.std(accs_test)
-                if acc_test_mean > best_acc[model_eval]:
-                    best_acc[model_eval] = acc_test_mean
-                    best_std[model_eval] = acc_test_std
-                    save_this_it = True
-                print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_test), model_eval, acc_test_mean, acc_test_std))
-                wandb.log({'Accuracy_default/{}'.format(model_eval): acc_test_mean}, step=it)
-                wandb.log({'Max_Accuracy/{}'.format(model_eval): best_acc[model_eval]}, step=it)
-                wandb.log({'Std_default/{}'.format(model_eval): acc_test_std}, step=it)
-                wandb.log({'Max_Std/{}'.format(model_eval): best_std[model_eval]}, step=it)
-
-                accs_flip = []
-                for it_eval in range(args.num_eval):
-                    net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-
-                    eval_labs = label_syn
-                    with torch.no_grad():
-                        image_save = image_syn
-                    image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
-
-                    args.lr_net = syn_lr.item()
-                    _, _, acc_flip = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture, batch_aug='Flip')
-                    accs_flip.append(acc_flip)
-                accs_flip = np.array(accs_flip)
-                acc_flip_mean = np.mean(accs_flip)
-                acc_flip_std = np.std(accs_flip)
-                wandb.log({'Accuracy_flip/{}'.format(model_eval): acc_flip_mean}, step=it)
-                wandb.log({'Std_flip/{}'.format(model_eval): acc_flip_std}, step=it)
-
-                accs_flipBatch = []
-                for it_eval in range(args.num_eval):
-                    net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-
-                    eval_labs = label_syn
-                    with torch.no_grad():
-                        image_save = image_syn
-                    image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
-
-                    args.lr_net = syn_lr.item()
-                    _, _, acc_flipBatch = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture, batch_aug='FlipBatch')
-                    accs_flipBatch.append(acc_flipBatch)
-                accs_flipBatch = np.array(accs_flipBatch)
-                acc_flipBatch_mean = np.mean(accs_flipBatch)
-                acc_flipBatch_std = np.std(accs_flipBatch)
-                wandb.log({'Accuracy_flipBatch/{}'.format(model_eval): acc_flipBatch_mean}, step=it)
-                wandb.log({'Std_flipBatch/{}'.format(model_eval): acc_flipBatch_std}, step=it)
-
-                if it == args.Iteration:
-                    data = [[f"Default", '%.2f (%.2f)'%(acc_test_mean*100, acc_test_std*100)],
-                            [f"Flip", '%.2f (%.2f)'%(acc_flip_mean*100, acc_flip_std*100)],
-                            [f"FlipBatch", '%.2f (%.2f)'%(acc_flipBatch_mean*100, acc_flipBatch_std*100)]]
-                    table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
-                    wandb.log({"Final Results" : table})
+                        args.lr_net = syn_lr.item()
+                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture, batch_aug=method)
+                        accs_test.append(acc_test)
+                        accs_train.append(acc_train)
+                    accs_test = np.array(accs_test)
+                    accs_train = np.array(accs_train)
+                    acc_test_mean = np.mean(accs_test)
+                    acc_test_std = np.std(accs_test)
+                    if acc_test_mean > best_acc[method][model_eval]:
+                        best_acc[method][model_eval] = acc_test_mean
+                        best_std[method][model_eval] = acc_test_std
+                        save_this_it = True
+                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_test), model_eval, acc_test_mean, acc_test_std))
+                    wandb.log({f'Accuracy {method}/{model_eval}': acc_test_mean}, step=it)
+                    wandb.log({f'Max_Accuracy {method}/{model_eval}': best_acc[method][model_eval]}, step=it)
+                    wandb.log({f'Std {method}/{model_eval}': acc_test_std}, step=it)
+                    wandb.log({f'Max_Std {method}/{model_eval}': best_std[method][model_eval]}, step=it)
 
 
         if it in eval_it_pool and (save_this_it or it % 1000 == 0):
@@ -407,7 +366,7 @@ def main(args):
             if args.texture:
                 x = torch.cat([torch.stack([torch.roll(im, (torch.randint(im_size[0]*args.canvas_size, (1,)), torch.randint(im_size[1]*args.canvas_size, (1,))), (1,2))[:,:im_size[0],:im_size[1]] for im in x]) for _ in range(args.canvas_samples)])
                 this_y = torch.cat([this_y for _ in range(args.canvas_samples)])
-            
+
             x, this_y = BatchAug(x, this_y, args.batch_aug)
 
             if args.dsa and (not args.no_aug):
@@ -478,7 +437,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--num_eval', type=int, default=5, help='how many networks to evaluate on')
 
-    parser.add_argument('--eval_it', type=int, default=1000, help='how often to evaluate')
+    parser.add_argument('--eval_it', type=int, default=100, help='how often to evaluate')
 
     parser.add_argument('--epoch_eval_train', type=int, default=1000, help='epochs to train a model with synthetic data')
     parser.add_argument('--Iteration', type=int, default=5000, help='how many distillation steps to perform')
@@ -527,10 +486,10 @@ if __name__ == '__main__':
 
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug', type=str, default=None, help='type of the batch augmentation')
+    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
+    parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
 
     main(args)
-
 

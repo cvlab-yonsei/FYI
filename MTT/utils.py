@@ -297,18 +297,13 @@ def get_time():
     return str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
 
 
-def BatchAug(img, lab, batch_aug=None):
+def BatchAug(img, lab, batch_aug='Standard'):
     # img: (N, C, H, W)
     
-    if batch_aug is None:
+    if batch_aug == 'Standard':
         return img, lab
 
-    elif batch_aug == 'FlipBatch':
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-        lab = torch.cat([lab, lab], dim=0)
-        return img, lab
-    
-    elif batch_aug == 'FlipBatchBT': # Same as FlipBatch but do not reduce batch_train
+    elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
         img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
@@ -322,7 +317,7 @@ def BatchAug(img, lab, batch_aug=None):
         raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
 
 
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False, batch_aug=None):
+def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False, batch_aug='Standard'):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
 
@@ -376,7 +371,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False,
 
 
 
-def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, return_loss=False, texture=False, batch_aug=None):
+def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, return_loss=False, texture=False, batch_aug='Standard'):
     net = net.to(args.device)
     images_train = images_train.to(args.device)
     labels_train = labels_train.to(args.device)

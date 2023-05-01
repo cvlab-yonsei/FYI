@@ -34,8 +34,8 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug', type=str, default=None, help='type of the batch augmentation')
-    parser.add_argument('--flip_real', type=bool, default=False, help='Flip real batch or not')
+    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
+    parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
@@ -44,6 +44,7 @@ def main():
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.dsa_param = ParamDiffAug()
     args.dsa = True if args.method == 'DSA' else False
+    eval_method = args.eval_method.split('_')
 
     # Reduce batch size if batch augmentation is used
     if args.batch_aug == 'FlipBatch':
@@ -65,14 +66,11 @@ def main():
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
-
     accs_all_exps = dict() # record performances of all experiments
-    accs_Flip_all_exps = dict() # record performances of all experiments
-    accs_FlipBatch_all_exps = dict() # record performances of all experiments
-    for key in model_eval_pool:
-        accs_all_exps[key] = []
-        accs_Flip_all_exps[key] = []
-        accs_FlipBatch_all_exps[key] = []
+    for metric in eval_method:
+        accs_all_exps[metric] = dict()
+        for key in model_eval_pool:
+            accs_all_exps[metric][key] = []
 
     data_save = []
 
@@ -163,41 +161,19 @@ def main():
                     else:
                         args.epoch_eval_train = 300
 
-                    accs = []
-                    for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
-                        accs.append(acc_test)
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
-                    wandb.log({'Accuracy_default/{}'.format(model_eval): np.mean(accs)}, step=exp)
-                    wandb.log({'Std_default/{}'.format(model_eval): np.std(accs)}, step=exp)
-
-                    accs_Flip = []
-                    for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                        _, acc_train, acc_Flip = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='Flip')
-                        accs_Flip.append(acc_Flip)
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_Flip), model_eval, np.mean(accs_Flip), np.std(accs_Flip)))
-                    wandb.log({'Accuracy_flip/{}'.format(model_eval): np.mean(accs_Flip)}, step=exp)
-                    wandb.log({'Std_flip/{}'.format(model_eval): np.std(accs_Flip)}, step=exp)
-
-                    accs_FlipBatch = []
-                    for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                        _, acc_train, acc_FlipBatch = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug='FlipBatch')
-                        accs_FlipBatch.append(acc_FlipBatch)
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_FlipBatch), model_eval, np.mean(accs_FlipBatch), np.std(accs_FlipBatch)))
-                    wandb.log({'Accuracy_flipBatch/{}'.format(model_eval): np.mean(accs_FlipBatch)}, step=exp)
-                    wandb.log({'Std_flipBatch/{}'.format(model_eval): np.std(accs_FlipBatch)}, step=exp)
-
-
-                    if it == args.Iteration: # record the final results
-                        accs_all_exps[model_eval] += accs
-                        accs_Flip_all_exps[model_eval] += accs_Flip
-                        accs_FlipBatch_all_exps[model_eval] += accs_FlipBatch
+                    for metric in eval_method:
+                        print(f'Evaluate by {metric} method')
+                        accs = []
+                        for it_eval in range(args.num_eval):
+                            net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                            image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                            _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug=metric)
+                            accs.append(acc_test)
+                        print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                        wandb.log({f'Accuracy_{metric}_default/{model_eval}': np.mean(accs)}, step=exp)
+                        wandb.log({f'Std_{metric}_default/{model_eval}': np.std(accs)}, step=exp)
+                        if it == args.Iteration: # record the final results
+                            accs_all_exps[metric][model_eval] += accs
 
                 ''' visualize and save '''
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
@@ -250,8 +226,8 @@ def main():
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
 
                     img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug)
-                    if args.flip_real:
-                        img_real, lab_real = BatchAug(img_real, lab_real, 'Flip')
+                    # if args.flip_real:
+                    #     img_real, lab_real = BatchAug(img_real, lab_real, 'Flip')
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
@@ -298,24 +274,15 @@ def main():
 
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:
-        accs = accs_all_exps[key]
-        print("Default Accuracy")
-        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-
-        accs = accs_Flip_all_exps[key]
-        print("Flip Accuracy")
-        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-
-        accs = accs_FlipBatch_all_exps[key]
-        print("FlipBatch Accuracy")
-        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
+        for metric in eval_method:
+            accs = accs_all_exps[metric][key]
+            print(f"Accuracy_{metric}")
+            print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
         # log the final accuracy
-        data = [[f"Default_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)],
-                 [f"Flip_{key}", '%.2f (%.2f)'%(np.mean(accs_Flip_all_exps[key])*100, np.std(accs_Flip_all_exps[key])*100)],
-                 [f"FlipBatch_{key}", '%.2f (%.2f)'%(np.mean(accs_FlipBatch_all_exps[key])*100, np.std(accs_FlipBatch_all_exps[key])*100)]]
+        data = [[f"{metric}_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[metric][key])*100, np.std(accs_all_exps[metric][key])*100)] for metric in eval_method]
         table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
-        wandb.log({f"Final Results_{key}" : table})
+        wandb.log({f"Final Results {key}" : table})
         
     wandb.finish()
 

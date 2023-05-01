@@ -293,10 +293,10 @@ def get_loops(ipc):
     return outer_loop, inner_loop
 
 
-def BatchAug(img, lab, batch_aug=None):
+def BatchAug(img, lab, batch_aug='Standard'):
     # img: (N, C, H, W)
     
-    if batch_aug is None:
+    if batch_aug == 'Standard':
         return img, lab
 
     elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
@@ -313,7 +313,7 @@ def BatchAug(img, lab, batch_aug=None):
         raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
     
 
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug=None):
+def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug='Standard'):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)
@@ -359,7 +359,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug=None
 
 
 
-def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, batch_aug=None):
+def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, batch_aug='Standard'):
     net = net.to(args.device)
     images_train = images_train.to(args.device)
     labels_train = labels_train.to(args.device)
