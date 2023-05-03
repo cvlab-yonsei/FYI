@@ -395,7 +395,7 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, 
         loss_train_list.append(loss_train)
         if ep == Epoch:
             with torch.no_grad():
-                loss_test, acc_test = epoch('test', testloader, net, optimizer, criterion, args, aug=False, batch_aug=None)
+                loss_test, acc_test = epoch('test', testloader, net, optimizer, criterion, args, aug=False, batch_aug=batch_aug)
         if ep in lr_schedule:
             lr *= 0.1
             optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
