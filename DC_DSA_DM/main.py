@@ -218,7 +218,7 @@ def main():
 
 
                 ''' update synthetic data '''
-                loss = torch.tensor(0.0).to(args.device)
+                
                 for c in range(num_classes):
                     img_real = get_images(c, args.batch_real)
                     lab_real = torch.ones((img_real.shape[0],), device=args.device, dtype=torch.long) * c
@@ -242,13 +242,13 @@ def main():
                     output_syn = net(img_syn)
                     loss_syn = criterion(output_syn, lab_syn)
                     gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
+                    
+                    optimizer_img.zero_grad()
+                    loss = match_loss(gw_syn, gw_real, args)
+                    loss.backward()
+                    loss_avg += loss.item()
 
-                    loss += match_loss(gw_syn, gw_real, args)
-
-                optimizer_img.zero_grad()
-                loss.backward()
                 optimizer_img.step()
-                loss_avg += loss.item()
 
                 if ol == args.outer_loop - 1:
                     break
