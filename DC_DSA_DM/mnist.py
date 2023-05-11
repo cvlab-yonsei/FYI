@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='toyDC', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug', type=str, default=None, help='type of the batch augmentation')
+    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--flip_real', type=bool, default=False, help='Flip real batch or not')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
 
@@ -47,7 +47,7 @@ def main():
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    args.outer_loop, args.inner_loop = get_loops(args.ipc)
+    args.outer_loop, args.inner_loop = (2, 250) if args.ipc==2 else get_loops(args.ipc)
     # Set device
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'

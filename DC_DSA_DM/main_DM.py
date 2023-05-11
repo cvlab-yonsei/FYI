@@ -120,8 +120,8 @@ def main():
         labels_all = [dst_train[i][1] for i in range(len(dst_train))]
         for i, lab in enumerate(labels_all):
             indices_class[lab].append(i)
-        images_all = torch.cat(images_all, dim=0).to(args.device)
-        labels_all = torch.tensor(labels_all, dtype=torch.long, device=args.device)
+        images_all = torch.cat(images_all, dim=0)
+        labels_all = torch.tensor(labels_all, dtype=torch.long)
 
 
 
@@ -130,7 +130,7 @@ def main():
 
         def get_images(c, n): # get random n images from class c
             idx_shuffle = np.random.permutation(indices_class[c])[:n]
-            return images_all[idx_shuffle]
+            return images_all[idx_shuffle].to(args.device)
 
         for ch in range(channel):
             print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))

@@ -107,15 +107,15 @@ def main():
         labels_all = [dst_train[i][1] for i in range(len(dst_train))]
         for i, lab in enumerate(labels_all):
             indices_class[lab].append(i)
-        images_all = torch.cat(images_all, dim=0).to(args.device)
-        labels_all = torch.tensor(labels_all, dtype=torch.long, device=args.device)
+        images_all = torch.cat(images_all, dim=0)
+        labels_all = torch.tensor(labels_all, dtype=torch.long)
 
         for c in range(num_classes):
             print('class c = %d: %d real images'%(c, len(indices_class[c])))
 
         def get_images(c, n): # get random n images from class c
             idx_shuffle = np.random.permutation(indices_class[c])[:n]
-            return images_all[idx_shuffle]
+            return images_all[idx_shuffle].to(args.device)
 
         for ch in range(channel):
             print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))
@@ -226,8 +226,6 @@ def main():
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
 
                     img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug)
-                    # if args.flip_real:
-                    #     img_real, lab_real = BatchAug(img_real, lab_real, 'Flip')
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
