@@ -204,6 +204,7 @@ def main():
             ''' update synthetic data '''
             if 'BN' not in args.model: # for ConvNet
                 # loss = torch.tensor(0.0).to(args.device)
+                optimizer_img.zero_grad()
                 for c in range(num_classes):
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
@@ -219,10 +220,9 @@ def main():
                     output_syn = embed(img_syn)
 
                     loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
-                    optimizer_img.zero_grad()
                     loss.backward()
-                    optimizer_img.step()
                     loss_avg += loss.item()
+                optimizer_img.step()
 
             else: # for ConvNetBN
                 images_real_all = []

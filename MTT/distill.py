@@ -242,7 +242,7 @@ def main(args):
             with torch.no_grad():
                 image_save = image_syn.cuda()
 
-                save_dir = os.path.join(".", "logged_files", args.dataset, wandb.run.name)
+                save_dir = os.path.join(".", "logged_files", args.dataset, wandb.run.name + f'_{args.ipc}ipc')
 
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
