@@ -39,6 +39,9 @@ def main():
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
+    if args.dataset == 'CIFAR100' and args.ipc == 50:
+        args.inner_loop = 10
+        args.outer_loop = 10
     # Set device
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'

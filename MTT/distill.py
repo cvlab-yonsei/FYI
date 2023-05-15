@@ -83,6 +83,8 @@ def main(args):
 
     if args.batch_syn is None:
         args.batch_syn = num_classes * args.ipc
+    if args.batch_aug == "FlipBatchBT":
+        args.batch_syn = args.batch_syn // 2
 
     args.distributed = torch.cuda.device_count() > 1
 
@@ -440,7 +442,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_it', type=int, default=100, help='how often to evaluate')
 
     parser.add_argument('--epoch_eval_train', type=int, default=1000, help='epochs to train a model with synthetic data')
-    parser.add_argument('--Iteration', type=int, default=5000, help='how many distillation steps to perform')
+    parser.add_argument('--Iteration', type=int, default=10000, help='how many distillation steps to perform')
 
     parser.add_argument('--lr_img', type=float, default=1000, help='learning rate for updating synthetic images')
     parser.add_argument('--lr_lr', type=float, default=1e-05, help='learning rate for updating... learning rate')
