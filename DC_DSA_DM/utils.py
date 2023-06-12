@@ -317,6 +317,14 @@ def BatchAug(img, lab, batch_aug='Standard'):
         randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
         img = torch.where(randf < 0.5, img.flip(3), img)
         return img, lab
+    
+    elif batch_aug == 'Expect':
+        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+        params = ParamDiffAug()
+        seed = int(time.time() * 1000) % 100000
+        img = torch.cat([DiffAugment(img, 'color_crop_cutout_scale_rotate', seed=seed, param=params), img], dim=0)
+        lab = torch.repeat_interleave(lab, 4, 0)
+        return img, lab
 
     else:
         raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
