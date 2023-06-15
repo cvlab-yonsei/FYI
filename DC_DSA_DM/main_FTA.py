@@ -220,6 +220,11 @@ def main():
                         if 'BatchNorm' in module._get_name():  #BatchNorm
                             module.eval() # fix mu and sigma of every BatchNorm layer
 
+                reverse = False
+                if args.rand:
+                    # decide a boolean value randomly
+                    if torch.rand(1) > 0.5:
+                        reverse = True
 
                 ''' update synthetic data '''
                 optimizer_img.zero_grad()
@@ -243,36 +248,53 @@ def main():
                     # loss_syn = criterion(output_syn, lab_syn)
                     # gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
 
-                    reverse = False
-                    if args.rand:
-                        # decide a boolean value randomly
-                        if torch.rand(1) > 0.5:
-                            reverse = True
-                    
                     if reverse:
-                        output_syn = net(img_syn.detach().clone())
-                        loss_syn = criterion(output_syn, lab_syn)
-                        gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
-                        gw_syn = list((_.detach().clone() for _ in gw_syn))
-
-                        output_syn_flip = net(torch.flip(img_syn, dims=[3]))
-                        loss_syn_flip = criterion(output_syn_flip, lab_syn)
-                        gw_syn_flip = torch.autograd.grad(loss_syn_flip, net_parameters, create_graph=True)
-                        # average gw_syn and gw_syn_flip
-                        gw_syn = [(gw_syn[i] + gw_syn_flip[i]) / 2 for i in range(len(gw_syn))]
-                    else:
-                        output_syn_flip = net(torch.flip(img_syn.detach().clone(), dims=[3]))
-                        loss_syn_flip = criterion(output_syn_flip, lab_syn)
-                        gw_syn_flip = torch.autograd.grad(loss_syn_flip, net_parameters, create_graph=True)
-                        gw_syn_flip = list((_.detach().clone() for _ in gw_syn_flip))
-
                         output_syn = net(img_syn)
-                        loss_syn = criterion(output_syn, lab_syn)
-                        gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
-                        # average gw_syn and gw_syn_flip
-                        gw_syn = [(gw_syn[i] + gw_syn_flip[i]) / 2 for i in range(len(gw_syn))]
-                    
-                    loss = match_loss(gw_syn, gw_real, args)
+                    else:
+                        output_syn = net(torch.flip(img_syn, dims=[3]))
+                    loss_syn = criterion(output_syn, lab_syn)
+                    gw_syn = torch.autograd.grad(loss_syn, net_parameters)
+                    gwrs = []
+                    for ig in range(len(gw_real)):
+                        gwr = gw_real[ig]
+                        gws = gw_syn[ig]
+                        shape = gwr.shape
+                        if len(shape) == 4: # conv, out*in*h*w
+                            gwr = gwr.reshape(shape[0], shape[1] * shape[2] * shape[3])
+                            gws = gws.reshape(shape[0], shape[1] * shape[2] * shape[3])
+                        elif len(shape) == 3:  # layernorm, C*h*w
+                            gwr = gwr.reshape(shape[0], shape[1] * shape[2])
+                            gws = gws.reshape(shape[0], shape[1] * shape[2])
+                        elif len(shape) == 2: # linear, out*in
+                            tmp = 'do nothing'
+                        elif len(shape) == 1: # batchnorm/instancenorm, C; groupnorm x, bias
+                            break
+                        gwr = 2 * (torch.sum(gwr * gws, dim=-1) / torch.sum(gwr * gwr, dim=-1))[:, None] * gwr - gws
+                        gwrs.append(gwr)
+                    del gw_real, gw_syn
+
+                    if reverse:
+                        output_syn = net(torch.flip(img_syn, dims=[3]))
+                    else:
+                        output_syn = net(img_syn)
+                    loss_syn = criterion(output_syn, lab_syn)
+                    gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
+                    loss = torch.tensor(0.0).to(args.device)
+                    idx = 0
+                    for ig in range(len(gw_syn)):
+                        gws = gw_syn[ig]
+                        shape = gws.shape
+                        if len(shape) == 4: # conv, out*in*h*w
+                            gws = gws.reshape(shape[0], shape[1] * shape[2] * shape[3])
+                        elif len(shape) == 3:  # layernorm, C*h*w
+                            gws = gws.reshape(shape[0], shape[1] * shape[2])
+                        elif len(shape) == 2: # linear, out*in
+                            tmp = 'do nothing'
+                        elif len(shape) == 1: # batchnorm/instancenorm, C; groupnorm x, bias
+                            break
+                        loss += torch.sum(1 - torch.sum(gwrs[idx] * gws, dim=-1) / (torch.norm(gwrs[idx], dim=-1) * torch.norm(gws, dim=-1) + 0.000001))
+                        idx += 1
+
                     loss.backward()
                     loss_avg += loss.item()
 
