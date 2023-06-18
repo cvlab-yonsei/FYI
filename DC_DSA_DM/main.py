@@ -182,8 +182,7 @@ def main():
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
                 image_syn_vis = copy.deepcopy(image_syn.detach().cpu())
                 for ch in range(channel):
-                    # normalize each channel using the mean and std
-                    image_syn_vis[:, ch] = (image_syn_vis[:, ch] - torch.mean(image_syn_vis[:, ch])) / torch.std(image_syn_vis[:, ch])
+                    image_syn_vis[:, ch] = image_syn_vis[:, ch]  * std[ch] + mean[ch]
                 image_syn_vis[image_syn_vis<0] = 0.0
                 image_syn_vis[image_syn_vis>1] = 1.0
                 save_image(image_syn_vis, save_name, nrow=10) # Trying normalize = True/False may get better visual effects.

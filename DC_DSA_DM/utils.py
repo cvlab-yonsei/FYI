@@ -301,6 +301,7 @@ def get_loops(ipc):
         exit('loop hyper-parameters are not defined for %d ipc'%ipc)
     return outer_loop, inner_loop
 
+
 class FlipBatchMaxGrad(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
@@ -312,6 +313,22 @@ class FlipBatchMaxGrad(torch.autograd.Function):
         g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
         # take the max
         g = torch.max(g_original, g_flipped)
+        return g, None
+    
+
+class FlipBatchMaxGradRescale(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        x = torch.cat([x, torch.flip(x, dims=[-1])], dim=0)
+        return x
+    @staticmethod
+    def backward(ctx, g):
+        g_original = g[:g.size(0)//2]
+        g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
+        # take the max
+        g = torch.max(g_original, g_flipped)
+        # Rescale by norm
+        g = g / torch.norm(g) * torch.norm(g_original)
         return g, None
 
 
@@ -333,6 +350,11 @@ def BatchAug(img, lab, batch_aug='Standard'):
     
     elif batch_aug == 'FlipBatchMaxGrad':
         img = FlipBatchMaxGrad.apply(img)
+        lab = torch.cat([lab, lab], dim=0)
+        return img, lab
+
+    elif batch_aug == 'FlipBatchMaxGradRescale':
+        img = FlipBatchMaxGradRescale.apply(img)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
     
