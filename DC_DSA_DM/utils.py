@@ -301,6 +301,19 @@ def get_loops(ipc):
         exit('loop hyper-parameters are not defined for %d ipc'%ipc)
     return outer_loop, inner_loop
 
+class FlipBatchMaxGrad(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        x = torch.cat([x, torch.flip(x, dims=[-1])], dim=0)
+        return x
+    @staticmethod
+    def backward(ctx, g):
+        g_original = g[:g.size(0)//2]
+        g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
+        # take the max
+        g = torch.max(g_original, g_flipped)
+        return g, None
+
 
 def BatchAug(img, lab, batch_aug='Standard'):
     # img: (N, C, H, W)
@@ -308,7 +321,7 @@ def BatchAug(img, lab, batch_aug='Standard'):
     if batch_aug == 'Standard':
         return img, lab
 
-    elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
+    elif batch_aug in ['FlipBatch', 'FlipBatchBT']:
         img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
@@ -318,14 +331,21 @@ def BatchAug(img, lab, batch_aug='Standard'):
         img = torch.where(randf < 0.5, img.flip(3), img)
         return img, lab
     
-    elif batch_aug == 'Expect':
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-        params = ParamDiffAug()
-        seed = int(time.time() * 1000) % 100000
-        img = torch.cat([DiffAugment(img, 'color_crop_cutout_scale_rotate', seed=seed, param=params), img], dim=0)
-        lab = torch.repeat_interleave(lab, 4, 0)
+    elif batch_aug == 'FlipBatchMaxGrad':
+        img = FlipBatchMaxGrad.apply(img)
+        lab = torch.cat([lab, lab], dim=0)
         return img, lab
-
+    
+    elif batch_aug == 'FlipBatchDet':
+        if torch.rand(1) > 0.5:
+            img_flip = torch.flip(img, dims=[-1]).detach().clone()
+            img = torch.cat([img, img_flip], dim=0)
+        else:
+            img_flip = torch.flip(img, dims=[-1])
+            img = torch.cat([img_flip, img.detach().clone()], dim=0)
+        lab = torch.cat([lab, lab], dim=0)
+        return img, lab
+    
     else:
         raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
     
