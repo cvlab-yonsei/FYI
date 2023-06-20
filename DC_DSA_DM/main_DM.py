@@ -101,7 +101,7 @@ def main():
             g_original = g[:g.size(0)//2]
             g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
             # take the max
-            g = torch.max(g_original, g_flipped)
+            g = torch.where(torch.abs(g_original) > torch.abs(g_flipped), g_original, g_flipped)
             return g, None
         
     class FlipBatchMaxGradRescale(torch.autograd.Function):
@@ -113,8 +113,8 @@ def main():
         def backward(ctx, g):
             g_original = g[:g.size(0)//2]
             g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
-            # take the max
-            g = torch.max(g_original, g_flipped)
+            # take the larger absolute value
+            g = torch.where(torch.abs(g_original) > torch.abs(g_flipped), g_original, g_flipped)
             # Rescale by norm
             g = g / torch.norm(g) * torch.norm(g_original)
             return g, None
