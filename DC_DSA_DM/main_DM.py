@@ -131,6 +131,20 @@ def main():
             # take the min
             g = torch.where(torch.abs(g_original) < torch.abs(g_flipped), g_original, g_flipped)
             return g, None
+        
+    class FlipBatchZeroConflict(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            x = torch.cat([x, torch.flip(x, dims=[-1])], dim=0)
+            return x
+        @staticmethod
+        def backward(ctx, g):
+            g_original = g[:g.size(0)//2]
+            g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
+            # Ensure that the gradients of the two flipped images do not conflict
+            # If they conflict, set the gradient to the one with larger magnitude
+            g = torch.where(g_original * g_flipped < 0, torch.where(torch.abs(g_original) > torch.abs(g_flipped), g_original, g_flipped), g_original + g_flipped)
+            return g, None
 
     def BatchAug(img, batch_aug=None):
         # img: (N, C, H, W)
@@ -149,8 +163,8 @@ def main():
         elif batch_aug == 'FlipBatchMaxGradRescale':
             img = FlipBatchMaxGradRescale.apply(img)
             return img
-        elif batch_aug == 'FlipBatchMinGrad':
-            img = FlipBatchMinGrad.apply(img)
+        elif batch_aug == 'FlipBatchZeroConflict':
+            img = FlipBatchZeroConflict.apply(img)
             return img
         else:
             raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
