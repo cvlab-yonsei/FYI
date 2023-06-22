@@ -380,6 +380,9 @@ def main(args):
 
             original_x_list.append(x)
 
+            # batch augmentation
+            x, this_y = BatchAug(x, this_y, args.batch_aug)
+
             x = DiffAugment(x, args.dsa_strategy, param=args.dsa_param)
 
             x_list.append(x.clone())
