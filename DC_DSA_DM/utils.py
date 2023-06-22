@@ -332,6 +332,20 @@ class FlipBatchMaxGradRescale(torch.autograd.Function):
         return g, None
 
 
+class FlipBatchMinGrad(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        x = torch.cat([x, torch.flip(x, dims=[-1])], dim=0)
+        return x
+    @staticmethod
+    def backward(ctx, g):
+        g_original = g[:g.size(0)//2]
+        g_flipped = torch.flip(g[g.size(0)//2:], dims=[-1])
+        # take the min
+        g = torch.where(torch.abs(g_original) < torch.abs(g_flipped), g_original, g_flipped)
+        return g, None
+
+
 def BatchAug(img, lab, batch_aug='Standard'):
     # img: (N, C, H, W)
     
@@ -355,6 +369,11 @@ def BatchAug(img, lab, batch_aug='Standard'):
 
     elif batch_aug == 'FlipBatchMaxGradRescale':
         img = FlipBatchMaxGradRescale.apply(img)
+        lab = torch.cat([lab, lab], dim=0)
+        return img, lab
+    
+    elif batch_aug == 'FlipBatchMinGrad':
+        img = FlipBatchMinGrad.apply(img)
         lab = torch.cat([lab, lab], dim=0)
         return img, lab
     

@@ -11,6 +11,7 @@ import wandb
 import copy
 import random
 from reparam_module import ReparamModule
+import gc
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -348,74 +349,129 @@ def main(args):
         syn_images = image_syn
 
         y_hat = label_syn.to(args.device)
-
+        x_list = []
+        y_list = []
         param_loss_list = []
         param_dist_list = []
         indices_chunks = []
+        indices_chunks_copy = []
+        original_x_list = []
 
-        for step in range(args.syn_steps):
+        param_dist = torch.tensor(0.0).to(args.device)
 
+        param_dist += torch.nn.functional.mse_loss(starting_params, target_params, reduction="sum")
+        gradient_sum = torch.zeros(starting_params.shape).requires_grad_(False).to(args.device)
+
+        gc.collect()
+
+        syn_label_grad = torch.zeros(label_syn.shape).to(args.device).requires_grad_(False)
+        syn_images_grad = torch.zeros(syn_images.shape).requires_grad_(False).to(args.device)
+
+        for il in range(args.syn_steps):
             if not indices_chunks:
                 indices = torch.randperm(len(syn_images))
                 indices_chunks = list(torch.split(indices, args.batch_syn))
 
             these_indices = indices_chunks.pop()
-
+            indices_chunks_copy.append(these_indices.clone())
 
             x = syn_images[these_indices]
             this_y = y_hat[these_indices]
 
-            if args.texture:
-                x = torch.cat([torch.stack([torch.roll(im, (torch.randint(im_size[0]*args.canvas_size, (1,)), torch.randint(im_size[1]*args.canvas_size, (1,))), (1,2))[:,:im_size[0],:im_size[1]] for im in x]) for _ in range(args.canvas_samples)])
-                this_y = torch.cat([this_y for _ in range(args.canvas_samples)])
+            original_x_list.append(x)
 
-            x, this_y = BatchAug(x, this_y, args.batch_aug)
+            x = DiffAugment(x, args.dsa_strategy, param=args.dsa_param)
 
-            if args.dsa and (not args.no_aug):
-                x = DiffAugment(x, args.dsa_strategy, param=args.dsa_param)
+            x_list.append(x.clone())
+            y_list.append(this_y.clone())
+
+            forward_params = student_params[-1]
+
+            forward_params = copy.deepcopy(forward_params.detach()).requires_grad_(True)
 
             if args.distributed:
-                forward_params = student_params[-1].unsqueeze(0).expand(torch.cuda.device_count(), -1)
+                forward_params_expanded = forward_params.unsqueeze(0).expand(torch.cuda.device_count(), -1)
             else:
-                forward_params = student_params[-1]
-            x = student_net(x, flat_param=forward_params)
+                forward_params_expanded = forward_params
+
+            x = student_net(x, flat_param=forward_params_expanded)
+
             ce_loss = criterion(x, this_y)
 
-            grad = torch.autograd.grad(ce_loss, student_params[-1], create_graph=True)[0]
-
-            student_params.append(student_params[-1] - syn_lr * grad)
-
-
-        param_loss = torch.tensor(0.0).to(args.device)
-        param_dist = torch.tensor(0.0).to(args.device)
-
-        param_loss += torch.nn.functional.mse_loss(student_params[-1], target_params, reduction="sum")
-        param_dist += torch.nn.functional.mse_loss(starting_params, target_params, reduction="sum")
-
-        param_loss_list.append(param_loss)
-        param_dist_list.append(param_dist)
+            grad = torch.autograd.grad(ce_loss, forward_params, create_graph=True, retain_graph=True)[0]
+            student_params.append(forward_params - syn_lr.item() * grad.detach().clone())
+            gradient_sum = gradient_sum + grad.detach().clone()
 
 
-        param_loss /= num_params
-        param_dist /= num_params
+        for il in range(args.syn_steps):
+            w = student_params[il]
 
-        param_loss /= param_dist
+            if args.distributed:
+                w_expanded = w.unsqueeze(0).expand(torch.cuda.device_count(), -1)
+            else:
+                w_expanded = w
 
-        grand_loss = param_loss
+            output = student_net(x_list[il], flat_param=w_expanded)
+
+            if args.batch_syn:
+                ce_loss = criterion(output, y_list[il])
+            else:
+                ce_loss = criterion(output, y_hat)
+
+            grad = torch.autograd.grad(ce_loss, w, create_graph=True, retain_graph=True)[0]
+
+            # Square term gradients.
+            square_term = syn_lr.item() ** 2 * (grad @ grad)
+            single_term = 2 * syn_lr.item() * grad @ (
+                        syn_lr.item() * (gradient_sum - grad.detach().clone()) - starting_params + target_params)
+
+            per_batch_loss = (square_term + single_term) / param_dist
+            gradients = torch.autograd.grad(per_batch_loss, original_x_list[il], retain_graph=False)[0]
+
+            with torch.no_grad():
+                syn_images_grad[indices_chunks_copy[il]] += gradients
+
+        # ---------end of computing input image gradients and learning rates--------------
+
+        del w, output, ce_loss, grad, square_term, single_term, per_batch_loss, gradients, student_net, w_expanded, forward_params, forward_params_expanded
 
         optimizer_img.zero_grad()
         optimizer_lr.zero_grad()
 
-        grand_loss.backward()
+        syn_lr.requires_grad_(True)
+        grand_loss = starting_params - syn_lr * gradient_sum - target_params
+        grand_loss = grand_loss.dot(grand_loss)
+        grand_loss = grand_loss / param_dist
 
-        optimizer_img.step()
+        lr_grad = torch.autograd.grad(grand_loss, syn_lr)[0]
+        syn_lr.grad = lr_grad
+
         optimizer_lr.step()
+        optimizer_lr.zero_grad()
 
+        image_syn.requires_grad_(True)
+
+        image_syn.grad = syn_images_grad.detach().clone()
+
+        del syn_images_grad
+        del lr_grad
         wandb.log({"Grand_Loss": grand_loss.detach().cpu(),
                    "Start_Epoch": start_epoch})
 
         for _ in student_params:
             del _
+        for _ in x_list:
+            del _
+        for _ in y_list:
+            del _
+
+
+        torch.cuda.empty_cache()
+
+        gc.collect()
+
+        optimizer_img.step()
+        optimizer_img.zero_grad()
 
         if it%10 == 0:
             print('%s iter = %04d, loss = %.4f' % (get_time(), it, grand_loss.item()))
