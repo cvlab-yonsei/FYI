@@ -34,10 +34,10 @@ class MLP(nn.Module):
 
 ''' ConvNet '''
 class ConvNet(nn.Module):
-    def __init__(self, channel, num_classes, net_width, net_depth, net_act, net_norm, net_pooling, im_size = (32,32)):
+    def __init__(self, channel, num_classes, net_width, net_depth, net_act, net_norm, net_pooling, im_size = (32,32), expand = False):
         super(ConvNet, self).__init__()
 
-        self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size)
+        self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand)
         num_feat = shape_feat[0]*shape_feat[1]*shape_feat[2]
         self.classifier = nn.Linear(num_feat, num_classes)
 
@@ -89,7 +89,7 @@ class ConvNet(nn.Module):
         else:
             exit('unknown net_norm: %s'%net_norm)
 
-    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size):
+    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand):
         layers = []
         in_channels = channel
         if im_size[0] == 28:
@@ -106,6 +106,8 @@ class ConvNet(nn.Module):
                 layers += [self._get_pooling(net_pooling)]
                 shape_feat[1] //= 2
                 shape_feat[2] //= 2
+            if expand:
+                net_width *= 2
 
         return nn.Sequential(*layers), shape_feat
 
