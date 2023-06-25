@@ -339,6 +339,15 @@ def main(args):
         start_epoch = np.random.randint(0, args.max_start_epoch)
         starting_params = expert_trajectory[start_epoch]
 
+        if args.noise is not None:
+            for p in starting_params:
+                # standard normal noise of shape of p
+                noise = torch.randn_like(p)
+                # normalize the noise by the norm and multiply the norm of p
+                noise = noise / torch.norm(noise) * torch.norm(p)
+                # add the noise to the parameters
+                p.data += noise * args.noise
+
         target_params = expert_trajectory[start_epoch+args.expert_epochs]
         target_params = torch.cat([p.data.to(args.device).reshape(-1) for p in target_params], 0)
 
@@ -549,6 +558,8 @@ if __name__ == '__main__':
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
+
+    parser.add_argument('--noise', type=float, default=None, help='noise added to the expert trajectories')
 
     args = parser.parse_args()
 
