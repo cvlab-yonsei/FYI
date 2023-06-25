@@ -176,6 +176,8 @@ def main(args):
         expert_files = []
         n = 0
         while os.path.exists(os.path.join(expert_dir, "replay_buffer_{}.pt".format(n))):
+            if args.max_files is not None and n >= args.max_files:
+                break
             expert_files.append(os.path.join(expert_dir, "replay_buffer_{}.pt".format(n)))
             n += 1
         if n == 0:
