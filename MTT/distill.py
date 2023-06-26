@@ -341,16 +341,18 @@ def main(args):
         start_epoch = np.random.randint(0, args.max_start_epoch)
         starting_params = expert_trajectory[start_epoch]
 
-        if args.noise is not None:
-            for p in starting_params:
-                # standard normal noise of shape of p
-                noise = torch.randn_like(p)
-                # normalize the noise by the norm and multiply the norm of p
-                noise = noise / torch.norm(noise) * torch.norm(p)
-                # add the noise to the parameters
-                p.data += noise * args.noise
-
         target_params = expert_trajectory[start_epoch+args.expert_epochs]
+
+        for p, ep in zip(starting_params, target_params):
+            # standard normal noise of shape of p
+            noise = torch.randn_like(p)
+            # normalize the noise by the norm and multiply the norm of p
+            noise_start = noise / torch.norm(noise) * torch.norm(p)
+            noise_end = noise / torch.norm(noise) * torch.norm(ep)
+            # add the noise to the parameters
+            p.data += noise_start * args.noise_start
+            ep.data += noise_end * args.noise_end
+
         target_params = torch.cat([p.data.to(args.device).reshape(-1) for p in target_params], 0)
 
         student_params = [torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params], 0).requires_grad_(True)]
@@ -561,7 +563,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
-    parser.add_argument('--noise', type=float, default=None, help='noise added to the expert trajectories')
+    parser.add_argument('--noise_start', type=float, default=0.0, help='noise added to the expert trajectories')
+    parser.add_argument('--noise_end', type=float, default=0.0, help='noise added to the expert trajectories at the end of training')
 
     args = parser.parse_args()
 
