@@ -34,17 +34,25 @@ class MLP(nn.Module):
 
 ''' ConvNet '''
 class ConvNet(nn.Module):
-    def __init__(self, channel, num_classes, net_width, net_depth, net_act, net_norm, net_pooling, im_size = (32,32), expand = False):
+    def __init__(self, channel, num_classes, net_width, net_depth, net_act, net_norm, net_pooling, im_size = (32,32), expand = False, gap=False, conv=False):
         super(ConvNet, self).__init__()
 
-        self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand)
+        self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand, gap)
         num_feat = shape_feat[0]*shape_feat[1]*shape_feat[2]
-        self.classifier = nn.Linear(num_feat, num_classes)
+        self.conv = conv
+        if conv:
+            self.classifier = nn.Conv2d(shape_feat[0], num_classes, kernel_size=(shape_feat[1], shape_feat[2]))
+        else:
+            self.classifier = nn.Linear(num_feat, num_classes)
 
     def forward(self, x):
         out = self.features(x)
-        out = out.view(out.size(0), -1)
-        out = self.classifier(out)
+        if self.conv:
+            out = self.classifier(out)
+            out = out.view(out.size(0), -1)
+        else:
+            out = out.view(out.size(0), -1)
+            out = self.classifier(out)
         return out
 
     def embed(self, x):
@@ -89,7 +97,7 @@ class ConvNet(nn.Module):
         else:
             exit('unknown net_norm: %s'%net_norm)
 
-    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand):
+    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size, expand, gap):
         layers = []
         in_channels = channel
         if im_size[0] == 28:
@@ -102,6 +110,11 @@ class ConvNet(nn.Module):
                 layers += [self._get_normlayer(net_norm, shape_feat)]
             layers += [self._get_activation(net_act)]
             in_channels = net_width
+            if d == net_depth - 1 and gap:
+                layers += [nn.AdaptiveAvgPool2d((1, 1))]
+                shape_feat[1] = 1
+                shape_feat[2] = 1
+                break
             if net_pooling != 'none':
                 layers += [self._get_pooling(net_pooling)]
                 shape_feat[1] //= 2

@@ -157,6 +157,13 @@ def get_network(model, channel, num_classes, im_size=(32, 32)):
 
     elif model == 'ConvNetL':
         net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=net_depth, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, expand=True)
+    elif model == 'ConvNet_GAP':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=net_depth, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, gap=True)
+    elif model == 'ConvNetL_GAP':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=net_depth, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, expand=True, gap=True)
+    elif model == 'ConvNetConv':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=net_depth, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, conv=True)
+
 
     elif model == 'ConvNetD1':
         net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=1, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size)
@@ -166,6 +173,15 @@ def get_network(model, channel, num_classes, im_size=(32, 32)):
         net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=3, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size)
     elif model == 'ConvNetD4':
         net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=4, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size)
+
+    elif model == 'ConvNetD1Conv':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=1, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, conv=True)
+    elif model == 'ConvNetD2Conv':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=2, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, conv=True)
+    elif model == 'ConvNetD3Conv':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=3, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, conv=True)
+    elif model == 'ConvNetD4Conv':
+        net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=4, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, conv=True)
     
     elif model == 'ConvNetD1L':
         net = ConvNet(channel=channel, num_classes=num_classes, net_width=net_width, net_depth=1, net_act=net_act, net_norm=net_norm, net_pooling=net_pooling, im_size=im_size, expand=True)
@@ -255,6 +271,20 @@ def distance_wb(gwr, gws):
     dis = dis_weight
     return dis
 
+def distance_conv(gwr, gws):
+    shape = gwr.shape
+    if len(shape) == 4: # conv, out*in*h*w
+        gwr = torch.mean(gwr + torch.flip(gwr, dims=[-1]))
+        gwr = gwr.reshape(shape[0], shape[1] * shape[2] * shape[3])
+        gws = torch.mean(gws + torch.flip(gws, dims=[-1]))
+        gws = gws.reshape(shape[0], shape[1] * shape[2] * shape[3])
+    else:
+        return torch.tensor(0, dtype=torch.float, device=gwr.device)
+
+    dis_weight = torch.sum(1 - torch.sum(gwr * gws, dim=-1) / (torch.norm(gwr, dim=-1) * torch.norm(gws, dim=-1) + 0.000001))
+    dis = dis_weight
+    return dis
+
 
 
 def match_loss(gw_syn, gw_real, args):
@@ -265,6 +295,12 @@ def match_loss(gw_syn, gw_real, args):
             gwr = gw_real[ig]
             gws = gw_syn[ig]
             dis += distance_wb(gwr, gws)
+
+    elif args.dis_metric == 'FlipInv':
+        for ig in range(len(gw_real)):
+            gwr = gw_real[ig]
+            gws = gw_syn[ig]
+            dis += distance_conv(gwr, gws)
 
     elif args.dis_metric == 'mse':
         gw_real_vec = []
@@ -577,7 +613,7 @@ def get_eval_pool(eval_mode, model, model_eval):
     elif eval_mode == 'N': # ablation study on network normalization layer
         model_eval_pool = ['ConvNetNN', 'ConvNetBN', 'ConvNetLN', 'ConvNetIN', 'ConvNetGN']
     elif eval_mode == 'SL':
-        model_eval_pool = [model, model[:-1]]
+        model_eval_pool = [model, 'ConvNet']
     elif eval_mode == 'S': # itself
         if 'BN' in model:
             print('Attention: Here I will replace BN with IN in evaluation, as the synthetic set is too small to measure BN hyper-parameters.')

@@ -32,7 +32,9 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
+    parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
+    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
+    parser.add_argument('--flip_feat', type=bool, default=False, help='flip features or not')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
@@ -151,7 +153,7 @@ def main():
         if batch_aug == 'Standard':
             return img
         # Best
-        elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
+        elif batch_aug in ['FlipBatch', 'FlipBatchBT']:
             img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
             return img
         elif batch_aug == 'Flip':
@@ -296,7 +298,7 @@ def main():
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
 
-                    img_syn= BatchAug(img_syn, args.batch_aug)
+                    img_syn= BatchAug(img_syn, args.batch_aug_syn)
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
@@ -310,7 +312,12 @@ def main():
                 images_syn_all = torch.cat(images_syn_all, dim=0)
 
                 output_real = embed(images_real_all).detach()
-                output_syn = embed(images_syn_all)
+                if args.flip_feat:
+                    output_syn = net.features(images_syn_all)
+                    output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=1)
+                    output_syn = output_syn.view(output_syn.size(0), -1)
+                else:
+                    output_syn = embed(images_syn_all)
 
                 loss += torch.sum((torch.mean(output_real.reshape(num_classes, args.batch_real, -1), dim=1) - torch.mean(output_syn.reshape(num_classes, args.ipc, -1), dim=1))**2)
 

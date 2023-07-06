@@ -34,7 +34,8 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
+    parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
+    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
@@ -228,7 +229,7 @@ def main():
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
 
-                    img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug)
+                    img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug_syn)
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
