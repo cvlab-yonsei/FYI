@@ -274,9 +274,9 @@ def distance_wb(gwr, gws):
 def distance_conv(gwr, gws):
     shape = gwr.shape
     if len(shape) == 4: # conv, out*in*h*w
-        gwr = torch.mean(gwr + torch.flip(gwr, dims=[-1]))
+        gwr = (gwr + torch.flip(gwr, dims=[-1])) / 2
         gwr = gwr.reshape(shape[0], shape[1] * shape[2] * shape[3])
-        gws = torch.mean(gws + torch.flip(gws, dims=[-1]))
+        gws = (gws + torch.flip(gws, dims=[-1])) / 2
         gws = gws.reshape(shape[0], shape[1] * shape[2] * shape[3])
     else:
         return torch.tensor(0, dtype=torch.float, device=gwr.device)
