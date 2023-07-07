@@ -282,13 +282,13 @@ def main():
                         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
                         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
-                    output_real = embed(images_real_all).detach()
+                    output_real = embed(img_real).detach()
                     if args.flip_feat:
-                        output_syn = net.features(images_syn_all)
-                        output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=1)
+                        output_syn = net.features(img_syn)
+                        output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[-1])], dim=0)
                         output_syn = output_syn.view(output_syn.size(0), -1)
                     else:
-                        output_syn = embed(images_syn_all)
+                        output_syn = embed(img_syn)
 
                     loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
                     loss.backward()
@@ -319,7 +319,7 @@ def main():
                 output_real = embed(images_real_all).detach()
                 if args.flip_feat:
                     output_syn = net.features(images_syn_all)
-                    output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=1)
+                    output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=0)
                     output_syn = output_syn.view(output_syn.size(0), -1)
                 else:
                     output_syn = embed(images_syn_all)
