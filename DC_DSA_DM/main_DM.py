@@ -8,6 +8,7 @@ import torch.nn as nn
 from torchvision.utils import save_image, make_grid
 from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
 import wandb
+from OT import SinkhornDistance
 
 
 def main():
@@ -34,7 +35,7 @@ def main():
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
-    parser.add_argument('--flip_feat', type=bool, default=False, help='flip features or not')
+    parser.add_argument('--matching', type=str, default='Baseline', help='How to match features')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
@@ -282,54 +283,75 @@ def main():
                         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
                         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
-                    output_real = embed(img_real).detach()
-                    if args.flip_feat:
+                    if args.matching == 'Baseline':
+                        output_real = embed(img_real)
+                        output_syn = embed(img_syn)
+                        loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
+                    elif args.matching == 'FlipFeat':
+                        output_real = embed(img_real).detach()
                         output_syn = net.features(img_syn)
                         output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[-1])], dim=0)
                         output_syn = output_syn.view(output_syn.size(0), -1)
-                    else:
-                        output_syn = embed(img_syn)
+                        loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
+                    elif args.matching == 'AlignMatch':
+                        output_real = net.features(img_real).detach()
+                        output_syn = torch.mean(net.features(img_syn), dim=0)
 
-                    loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
+                        with torch.no_grad():
+                            feat1 = output_real.view(output_real.shape[0], output_real.shape[1], -1)
+                            feat2 = torch.repeat_interleave(output_syn.unsqueeze(0), args.batch_real, dim=0)
+                            feat2 = feat2.view(output_real.shape[0], output_real.shape[1], -1)
+
+                            sinkhorn = SinkhornDistance(eps=0.1, max_iter=100, reduction=None)
+                            P = sinkhorn(feat1.permute(0,2,1), feat2.permute(0,2,1)).detach()  # optimal plan batch x 4 x 4
+                            P = P*(output_real.size(2)*output_real.size(3)) # assignment matrix
+                            f2 = torch.matmul(feat1, P.cuda()).view(output_real.shape).to(args.device)
+
+                        f2 = torch.mean(f2, dim=0)
+                        loss = torch.sum((output_syn.view(output_syn.size(0), -1) - f2.view(f2.size(0), -1))**2)
+                    else:
+                        raise NotImplementedError
+                    
                     loss.backward()
                     loss_avg += loss.item()
                 optimizer_img.step()
 
             else: # for ConvNetBN
-                images_real_all = []
-                images_syn_all = []
-                loss = torch.tensor(0.0).to(args.device)
-                for c in range(num_classes):
-                    img_real = get_images(c, args.batch_real)
-                    img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
+                raise NotImplementedError
+                # images_real_all = []
+                # images_syn_all = []
+                # loss = torch.tensor(0.0).to(args.device)
+                # for c in range(num_classes):
+                #     img_real = get_images(c, args.batch_real)
+                #     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
 
-                    img_syn= BatchAug(img_syn, args.batch_aug_syn)
+                #     img_syn= BatchAug(img_syn, args.batch_aug_syn)
 
-                    if args.dsa:
-                        seed = int(time.time() * 1000) % 100000
-                        img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
-                        img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
+                #     if args.dsa:
+                #         seed = int(time.time() * 1000) % 100000
+                #         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
+                #         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
-                    images_real_all.append(img_real)
-                    images_syn_all.append(img_syn)
+                #     images_real_all.append(img_real)
+                #     images_syn_all.append(img_syn)
 
-                images_real_all = torch.cat(images_real_all, dim=0)
-                images_syn_all = torch.cat(images_syn_all, dim=0)
+                # images_real_all = torch.cat(images_real_all, dim=0)
+                # images_syn_all = torch.cat(images_syn_all, dim=0)
 
-                output_real = embed(images_real_all).detach()
-                if args.flip_feat:
-                    output_syn = net.features(images_syn_all)
-                    output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=0)
-                    output_syn = output_syn.view(output_syn.size(0), -1)
-                else:
-                    output_syn = embed(images_syn_all)
+                # output_real = embed(images_real_all).detach()
+                # if args.flip_feat:
+                #     output_syn = net.features(images_syn_all)
+                #     output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=0)
+                #     output_syn = output_syn.view(output_syn.size(0), -1)
+                # else:
+                #     output_syn = embed(images_syn_all)
 
-                loss += torch.sum((torch.mean(output_real.reshape(num_classes, args.batch_real, -1), dim=1) - torch.mean(output_syn.reshape(num_classes, args.ipc, -1), dim=1))**2)
+                # loss += torch.sum((torch.mean(output_real.reshape(num_classes, args.batch_real, -1), dim=1) - torch.mean(output_syn.reshape(num_classes, args.ipc, -1), dim=1))**2)
 
-                optimizer_img.zero_grad()
-                loss.backward()
-                optimizer_img.step()
-                loss_avg += loss.item()
+                # optimizer_img.zero_grad()
+                # loss.backward()
+                # optimizer_img.step()
+                # loss_avg += loss.item()
             
 
 
