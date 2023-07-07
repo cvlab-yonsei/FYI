@@ -275,15 +275,20 @@ def main():
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
 
-                    img_syn= BatchAug(img_syn, args.batch_aug)
+                    img_syn= BatchAug(img_syn, args.batch_aug_syn)
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
                         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
                         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
-                    output_real = embed(img_real).detach()
-                    output_syn = embed(img_syn)
+                    output_real = embed(images_real_all).detach()
+                    if args.flip_feat:
+                        output_syn = net.features(images_syn_all)
+                        output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=1)
+                        output_syn = output_syn.view(output_syn.size(0), -1)
+                    else:
+                        output_syn = embed(images_syn_all)
 
                     loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
                     loss.backward()
