@@ -62,7 +62,7 @@ def main():
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
-    eval_it_pool = [args.Iteration+1] # The list of iterations when we evaluate models and record results.
+    eval_it_pool = [args.Iteration] # The list of iterations when we evaluate models and record results.
     print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
