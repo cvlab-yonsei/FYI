@@ -29,13 +29,14 @@ def main():
     parser.add_argument('--batch_train', type=int, default=256, help='batch size for training networks')
     parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')
-    parser.add_argument('--data_path', type=str, default='data', help='dataset path')
+    parser.add_argument('--data_path', type=str, default='/dataset', help='dataset path')
     parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric')
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
+    parser.add_argument('--batch_aug_real', type=str, default='Standard', help='type of the batch augmentation for real data')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
@@ -65,7 +66,7 @@ def main():
         os.makedirs(args.save_path)
 
     #eval_it_pool = np.arange(0, args.Iteration+1, 500).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
-    eval_it_pool = [args.Iteration]
+    eval_it_pool = [args.Iteration+1]
     print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
@@ -229,6 +230,7 @@ def main():
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
 
+                    img_real, lab_real = BatchAug(img_real, lab_real, args.batch_aug_real)
                     img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug_syn)
 
                     if args.dsa:
