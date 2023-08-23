@@ -67,8 +67,8 @@ def main(args):
     wandb.init(sync_tensorboard=False,
                project="DatasetDistillation",
                job_type="CleanRepo",
-               entity="eecvlab",
                config=args,
+               entity="eecvlab",
                tags=args.run_tags.split('_')
                )
     if args.run_name is not None:
@@ -340,25 +340,15 @@ def main(args):
                 random.shuffle(buffer)
 
         start_epoch = np.random.randint(0, args.max_start_epoch)
-        starting_params = expert_trajectory[start_epoch]
+        starting_params_origin = expert_trajectory[start_epoch]
 
-        target_params = expert_trajectory[start_epoch+args.expert_epochs]
+        target_params_origin = expert_trajectory[start_epoch+args.expert_epochs]
 
-        for p, ep in zip(starting_params, target_params):
-            # standard normal noise of shape of p
-            noise = torch.randn_like(p)
-            # normalize the noise by the norm and multiply the norm of p
-            noise_start = noise / torch.norm(noise) * torch.norm(p)
-            noise_end = noise / torch.norm(noise) * torch.norm(ep)
-            # add the noise to the parameters
-            p.data += noise_start * args.noise_start
-            ep.data += noise_end * args.noise_end
+        target_params = torch.cat([p.data.to(args.device).reshape(-1) for p in target_params_origin], 0)
 
-        target_params = torch.cat([p.data.to(args.device).reshape(-1) for p in target_params], 0)
+        student_params = [torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params_origin], 0).requires_grad_(True)]
 
-        student_params = [torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params], 0).requires_grad_(True)]
-
-        starting_params = torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params], 0)
+        starting_params = torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params_origin], 0)
 
         syn_images = image_syn
 
@@ -372,9 +362,9 @@ def main(args):
         original_x_list = []
 
         param_dist = torch.tensor(0.0).to(args.device)
+        gradient_sum = torch.zeros(starting_params.shape).requires_grad_(False).to(args.device)
 
         param_dist += torch.nn.functional.mse_loss(starting_params, target_params, reduction="sum")
-        gradient_sum = torch.zeros(starting_params.shape).requires_grad_(False).to(args.device)
 
         gc.collect()
 
@@ -437,12 +427,27 @@ def main(args):
 
             grad = torch.autograd.grad(ce_loss, w, create_graph=True, retain_graph=True)[0]
 
-            # Square term gradients.
-            square_term = syn_lr.item() ** 2 * (grad @ grad)
-            single_term = 2 * syn_lr.item() * grad @ (
-                        syn_lr.item() * (gradient_sum - grad.detach().clone()) - starting_params + target_params)
+            # Calculating per batch loss with cosine distance
+            per_batch_loss = torch.tensor(0.0).to(args.device)
+            # for i in range(len(start_indices)):
+            #     gwr = target_params[start_indices[i]:end_indices[i]]
+            #     gws = student_params[-1][start_indices[i]:end_indices[i]]\
+            #             + syn_lr.item() * grad[start_indices[i]:end_indices[i]].detach().clone() - syn_lr.item() * grad[start_indices[i]:end_indices[i]]
+            #     per_batch_loss += torch.sum(1 - torch.sum(gwr * gws, dim=-1) / (torch.norm(gwr, dim=-1) * torch.norm(gws, dim=-1) + 0.000001))
+            idx = 0
+            for i in range(len(target_params_origin)):
+                gwr = target_params_origin[i]
+                idx_del = gwr.numel()
+                if len(gwr.shape) == 1:
+                    idx += idx_del
+                else:
+                    gws = starting_params_origin[i].reshape(-1).to(args.device) - syn_lr * gradient_sum[idx:idx+idx_del]\
+                            + syn_lr.item() * grad[idx:idx+idx_del].detach().clone() - syn_lr.item() * grad[idx:idx+idx_del]
+                    gwr = gwr.reshape(gwr.shape[0], -1).to(args.device)
+                    gws = gws.reshape(gwr.shape[0], -1).to(args.device)
+                    per_batch_loss += torch.sum(1 - torch.sum(gwr * gws, dim=-1) / (torch.norm(gwr, dim=-1) * torch.norm(gws, dim=-1) + 0.000001))
+                    idx += idx_del
 
-            per_batch_loss = (square_term + single_term) / param_dist
             gradients = torch.autograd.grad(per_batch_loss, original_x_list[il], retain_graph=False)[0]
 
             with torch.no_grad():
@@ -450,15 +455,30 @@ def main(args):
 
         # ---------end of computing input image gradients and learning rates--------------
 
-        del w, output, ce_loss, grad, square_term, single_term, per_batch_loss, gradients, student_net, w_expanded, forward_params, forward_params_expanded
+        del w, output, ce_loss, grad, per_batch_loss, gradients, student_net, w_expanded, forward_params, forward_params_expanded
 
         optimizer_img.zero_grad()
         optimizer_lr.zero_grad()
 
         syn_lr.requires_grad_(True)
-        grand_loss = starting_params - syn_lr * gradient_sum - target_params
-        grand_loss = grand_loss.dot(grand_loss)
-        grand_loss = grand_loss / param_dist
+
+        # for i in range(len(start_indices)):
+        #     gwr = target_params[start_indices[i]:end_indices[i]]
+        #     gws = starting_params[start_indices[i]:end_indices[i]] - syn_lr * gradient_sum[start_indices[i]:end_indices[i]]
+        #     grand_loss = 1 - torch.sum(gwr * gws, dim=-1) / (torch.norm(gwr, dim=-1) * torch.norm(gws, dim=-1) + 0.000001)
+        grand_loss = torch.tensor(0.0).to(args.device)
+        idx = 0
+        for i in range(len(target_params_origin)):
+            gwr = target_params_origin[i]
+            idx_del = gwr.numel()
+            if len(gwr.shape) == 1:
+                idx += idx_del
+            else:
+                gws = starting_params_origin[i].reshape(-1).to(args.device) - syn_lr * gradient_sum[idx:idx+idx_del]
+                gwr = gwr.reshape(gwr.shape[0], -1).to(args.device)
+                gws = gws.reshape(gwr.shape[0], -1).to(args.device)
+                grand_loss += torch.sum(1 - torch.sum(gwr * gws, dim=-1) / (torch.norm(gwr, dim=-1) * torch.norm(gws, dim=-1) + 0.000001))
+                idx += idx_del
 
         lr_grad = torch.autograd.grad(grand_loss, syn_lr)[0]
         syn_lr.grad = lr_grad
@@ -563,9 +583,6 @@ if __name__ == '__main__':
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
-
-    parser.add_argument('--noise_start', type=float, default=0.0, help='noise added to the expert trajectories')
-    parser.add_argument('--noise_end', type=float, default=0.0, help='noise added to the expert trajectories at the end of training')
 
     args = parser.parse_args()
 

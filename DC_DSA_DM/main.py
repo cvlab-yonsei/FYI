@@ -84,6 +84,7 @@ def main():
     wandb.init(sync_tensorboard=False,
                project="DatasetDistillation",
                job_type="CleanRepo",
+               entity="eecvlab",
                config=args,
                tags=args.run_tags.split('_')
                )

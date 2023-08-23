@@ -81,6 +81,7 @@ def main():
     wandb.init(sync_tensorboard=False,
                project="DatasetDistillation",
                job_type="CleanRepo",
+               entity="eecvlab",
                config=args,
                tags=args.run_tags.split('_')
                )
@@ -205,7 +206,7 @@ def main():
                         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
                         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
-                    output_real = embed(img_real)
+                    output_real = embed(img_real).detach()
                     output_syn = embed(img_syn)
                     loss = torch.sum((torch.mean(output_real, dim=0) - torch.mean(output_syn, dim=0))**2)
                     
