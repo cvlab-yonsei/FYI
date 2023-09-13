@@ -198,6 +198,8 @@ def main(args):
 
     best_std = {method: {m: 0 for m in model_eval_pool} for method in eval_method}
 
+    best_one_acc = 0
+
     for it in range(0, args.Iteration+1):
         save_this_it = False
 
@@ -236,7 +238,9 @@ def main(args):
                     if acc_test_mean > best_acc[method][model_eval]:
                         best_acc[method][model_eval] = acc_test_mean
                         best_std[method][model_eval] = acc_test_std
+                    if acc_test_mean > best_one_acc:
                         save_this_it = True
+                        best_one_acc = acc_test_mean
                     print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_test), model_eval, acc_test_mean, acc_test_std))
                     wandb.log({f'Accuracy {method}/{model_eval}': acc_test_mean}, step=it)
                     wandb.log({f'Max_Accuracy {method}/{model_eval}': best_acc[method][model_eval]}, step=it)
