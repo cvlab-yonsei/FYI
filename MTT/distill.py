@@ -85,7 +85,7 @@ def main(args):
 
     if args.batch_syn is None:
         args.batch_syn = num_classes * args.ipc
-    if args.batch_aug == "FlipBatchBT":
+    if args.batch_aug == "FlipBatchBT" and not args.batchaug_whole:
         args.batch_syn = args.batch_syn // 2
 
     args.distributed = torch.cuda.device_count() > 1
@@ -354,9 +354,12 @@ def main(args):
 
         starting_params = torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params], 0)
 
-        syn_images = image_syn
+        if args.batchaug_whole:
+            syn_images, y_hat = BatchAug(image_syn, label_syn, args.batch_aug)
+        else:
+            syn_images = image_syn
+            y_hat = label_syn.to(args.device)
 
-        y_hat = label_syn.to(args.device)
         x_list = []
         y_list = []
         param_loss_list = []
@@ -389,7 +392,8 @@ def main(args):
             original_x_list.append(x)
 
             # batch augmentation
-            x, this_y = BatchAug(x, this_y, args.batch_aug)
+            if not args.batchaug_whole:
+                x, this_y = BatchAug(x, this_y, args.batch_aug)
 
             x = DiffAugment(x, args.dsa_strategy, param=args.dsa_param)
 
@@ -558,7 +562,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
-    parser.add_arguemtn('--first_eval', type=int, default=0, help='first iteration to evaluate on')
+    parser.add_argument('--first_eval', type=int, default=0, help='first iteration to evaluate on')
+    parser.add_argument('--batchaug_whole', action='store_true', help='whether to use batchaug on mini-batch or on the whole data')
 
     args = parser.parse_args()
 
