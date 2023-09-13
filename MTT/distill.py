@@ -33,7 +33,7 @@ def main(args):
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     eval_method = args.eval_method.split('_')
 
-    eval_it_pool = np.arange(0, args.Iteration + 1, args.eval_it).tolist()
+    eval_it_pool = np.arange(args.first_eval, args.Iteration + 1, args.eval_it).tolist()
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader, loader_train_dict, class_map, class_map_inv = get_dataset(args.dataset, args.data_path, args.batch_real, args.subset, args=args)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
@@ -158,7 +158,7 @@ def main(args):
 
     expert_dir = os.path.join(args.buffer_path, args.dataset)
     if args.dataset == "ImageNet":
-        expert_dir = os.path.join(expert_dir, args.subset, str(args.res))
+        expert_dir = os.path.join(expert_dir, args.subset)
     if args.dataset in ["CIFAR10", "CIFAR100"] and not args.zca:
         expert_dir += "_NO_ZCA"
     expert_dir = os.path.join(expert_dir, args.model)
@@ -343,16 +343,6 @@ def main(args):
         starting_params = expert_trajectory[start_epoch]
 
         target_params = expert_trajectory[start_epoch+args.expert_epochs]
-
-        for p, ep in zip(starting_params, target_params):
-            # standard normal noise of shape of p
-            noise = torch.randn_like(p)
-            # normalize the noise by the norm and multiply the norm of p
-            noise_start = noise / torch.norm(noise) * torch.norm(p)
-            noise_end = noise / torch.norm(noise) * torch.norm(ep)
-            # add the noise to the parameters
-            p.data += noise_start * args.noise_start
-            ep.data += noise_end * args.noise_end
 
         target_params = torch.cat([p.data.to(args.device).reshape(-1) for p in target_params], 0)
 
@@ -564,8 +554,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
-    parser.add_argument('--noise_start', type=float, default=0.0, help='noise added to the expert trajectories')
-    parser.add_argument('--noise_end', type=float, default=0.0, help='noise added to the expert trajectories at the end of training')
+    parser.add_arguemtn('--first_eval', type=int, default=0, help='first iteration to evaluate on')
 
     args = parser.parse_args()
 
