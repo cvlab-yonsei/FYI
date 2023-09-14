@@ -466,6 +466,9 @@ def main(args):
 
         image_syn.requires_grad_(True)
 
+        if args.batchaug_whole and args.batch_aug == "FlipBatchBT":
+            syn_images_grad = syn_images_grad[:len(image_syn)] + torch.flip(syn_images_grad[len(image_syn):], dims=[3])
+
         image_syn.grad = syn_images_grad.detach().clone()
 
         del syn_images_grad
