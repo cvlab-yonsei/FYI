@@ -81,9 +81,14 @@ def get_dataset(dataset, data_path, batch_size=1, subset="imagenette", args=None
         class_map = {x:x for x in range(num_classes)}
 
 
-    elif dataset == 'ImageNet':
+    elif dataset in ['ImageNet', 'ImageNetHR']:
         channel = 3
-        im_size = (128, 128)
+        if dataset == 'ImageNet':
+            im_size = (128, 128)
+        elif dataset == 'ImageNetHR':
+            im_size = (224, 224)
+        else:
+            raise NotImplementedError
         num_classes = 10
 
         config.img_net_classes = config.dict[subset]
@@ -321,7 +326,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False,
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
 
-    if args.dataset == "ImageNet":
+    if args.dataset in ['ImageNet', 'ImageNetHR']:
         class_map = {x: i for i, x in enumerate(config.img_net_classes)}
 
     if mode == 'train':
@@ -345,7 +350,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False,
             else:
                 img = augment(img, args.dc_aug_param, device=args.device)
 
-        if args.dataset == "ImageNet" and mode != "train":
+        if args.dataset in ['ImageNet', 'ImageNetHR'] and mode != "train":
             lab = torch.tensor([class_map[x.item()] for x in lab]).to(args.device)
 
         n_b = lab.shape[0]

@@ -157,7 +157,7 @@ def main(args):
     print('%s training begins'%get_time())
 
     expert_dir = os.path.join(args.buffer_path, args.dataset)
-    if args.dataset == "ImageNet":
+    if args.dataset in ['ImageNet', 'ImageNetHR']:
         expert_dir = os.path.join(expert_dir, args.subset)
     if args.dataset in ["CIFAR10", "CIFAR100"] and not args.zca:
         expert_dir += "_NO_ZCA"
@@ -268,7 +268,7 @@ def main(args):
 
                 if args.ipc < 50 or args.force_save:
                     upsampled = image_save
-                    if args.dataset != "ImageNet":
+                    if args.dataset not in ['ImageNet', 'ImageNetHR']:
                         upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=2)
                         upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=3)
                     grid = torchvision.utils.make_grid(upsampled, nrow=10, normalize=True, scale_each=True)
@@ -279,7 +279,7 @@ def main(args):
                         std = torch.std(image_save)
                         mean = torch.mean(image_save)
                         upsampled = torch.clip(image_save, min=mean-clip_val*std, max=mean+clip_val*std)
-                        if args.dataset != "ImageNet":
+                        if args.dataset not in ['ImageNet', 'ImageNetHR']:
                             upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=2)
                             upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=3)
                         grid = torchvision.utils.make_grid(upsampled, nrow=10, normalize=True, scale_each=True)
@@ -293,7 +293,7 @@ def main(args):
                         torch.save(image_save.cpu(), os.path.join(save_dir, "images_zca_{}.pt".format(it)))
 
                         upsampled = image_save
-                        if args.dataset != "ImageNet":
+                        if args.dataset not in ['ImageNet', 'ImageNetHR']:
                             upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=2)
                             upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=3)
                         grid = torchvision.utils.make_grid(upsampled, nrow=10, normalize=True, scale_each=True)
@@ -304,7 +304,7 @@ def main(args):
                             std = torch.std(image_save)
                             mean = torch.mean(image_save)
                             upsampled = torch.clip(image_save, min=mean - clip_val * std, max=mean + clip_val * std)
-                            if args.dataset != "ImageNet":
+                            if args.dataset not in ['ImageNet', 'ImageNetHR']:
                                 upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=2)
                                 upsampled = torch.repeat_interleave(upsampled, repeats=4, dim=3)
                             grid = torchvision.utils.make_grid(upsampled, nrow=10, normalize=True, scale_each=True)

@@ -22,7 +22,7 @@ def main(args):
     print('Hyper-parameters: \n', args.__dict__)
 
     save_dir = os.path.join(args.buffer_path, args.dataset)
-    if args.dataset == "ImageNet":
+    if args.dataset in ['ImageNet', 'ImageNetHR']:
         save_dir = os.path.join(save_dir, args.subset)
     if args.dataset in ["CIFAR10", "CIFAR100"] and not args.zca:
         save_dir += "_NO_ZCA"
