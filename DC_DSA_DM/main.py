@@ -38,8 +38,6 @@ def main():
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
     parser.add_argument('--batch_aug_real', type=str, default='Standard', help='type of the batch augmentation for real data')
     parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
-    parser.add_argument('--self_dist', type=float, default=0.0, help='self distance')
-
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
     if args.dataset == 'CIFAR100' and args.ipc == 50:
@@ -245,23 +243,11 @@ def main():
                     gw_real = torch.autograd.grad(loss_real, net_parameters)
                     gw_real = list((_.detach().clone() for _ in gw_real))
 
-                    if args.self_dist == 0.0:
-                        output_syn = net(img_syn)
-                        self_dist_loss = 0.0
-                    else:
-                        embed_syn = net.embed(img_syn)
-                        if it == 0 and ol == 0:
-                            embed_margin = torch.sum((embed_syn[:embed_syn.shape[0]//2] - embed_syn[embed_syn.shape[0]//2:])**2, dim=1).detach().clone()
-                        self_dist_loss = embed_margin - torch.sum((embed_syn[:embed_syn.shape[0]//2] - embed_syn[embed_syn.shape[0]//2:])**2, dim=1)
-                        # self_dist_loss = torch.where(self_dist_loss>0, self_dist_loss, torch.zeros_like(self_dist_loss))
-                        self_dist_loss = self_dist_loss**2
-                        self_dist_loss = torch.mean(self_dist_loss)
-                        output_syn = net.classifier(embed_syn)
-
+                    output_syn = net(img_syn)
                     loss_syn = criterion(output_syn, lab_syn)
                     gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
                     
-                    loss = match_loss(gw_syn, gw_real, args) + args.self_dist * self_dist_loss
+                    loss = match_loss(gw_syn, gw_real, args)
                     loss.backward()
                     loss_avg += loss.item()
 
