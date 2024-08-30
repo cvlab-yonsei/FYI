@@ -33,10 +33,6 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
-    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
-    parser.add_argument('--batch_aug_real', type=str, default='Standard', help='type of the batch augmentation for real data')
-    parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
 
     args = parser.parse_args()
     args.method = 'DM'
@@ -46,11 +42,6 @@ def main():
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
-    eval_method = args.eval_method.split('_')
-
-    # Reduce batch size if batch augmentation is used
-    if args.batch_aug == 'FlipBatch':
-        args.batch_train = args.batch_train//2
 
     # Downloading should be already done
     if not os.path.exists(args.data_path):
@@ -69,10 +60,8 @@ def main():
 
 
     accs_all_exps = dict() # record performances of all experiments
-    for metric in eval_method:
-        accs_all_exps[metric] = dict()
-        for key in model_eval_pool:
-            accs_all_exps[metric][key] = []
+    for key in model_eval_pool:
+        accs_all_exps[key] = []
 
     data_save = []
 
@@ -154,19 +143,17 @@ def main():
                     print('DSA augmentation strategy: \n', args.dsa_strategy)
                     print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
 
-                    for metric in eval_method:
-                        print(f'Evaluate by {metric} method')
-                        accs = []
-                        for it_eval in range(args.num_eval):
-                            net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                            image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                            _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug=metric)
-                            accs.append(acc_test)
-                        print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
-                        wandb.log({f'Accuracy_{metric}_default/{model_eval}': np.mean(accs)}, step=exp)
-                        wandb.log({f'Std_{metric}_default/{model_eval}': np.std(accs)}, step=exp)
-                        if it == args.Iteration: # record the final results
-                            accs_all_exps[metric][model_eval] += accs
+                    accs = []
+                    for it_eval in range(args.num_eval):
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
+                        accs.append(acc_test)
+                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                    wandb.log({f'Accuracy/{model_eval}': np.mean(accs)}, step=exp)
+                    wandb.log({f'Std/{model_eval}': np.std(accs)}, step=exp)
+                    if it == args.Iteration: # record the final results
+                        accs_all_exps[model_eval] += accs
 
                 ''' visualize and save '''
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
@@ -198,8 +185,7 @@ def main():
                     img_real = get_images(c, args.batch_real)
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
 
-                    img_real, _ = BatchAug(img_real, None, args.batch_aug_real)
-                    img_syn, _ = BatchAug(img_syn, None, args.batch_aug_syn)
+                    img_syn, _ = BatchAug(img_syn, None)
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
@@ -213,46 +199,7 @@ def main():
                     loss.backward()
                     loss_avg += loss.item()
                 optimizer_img.step()
-
-            else: # for ConvNetBN
-                raise NotImplementedError
-                # images_real_all = []
-                # images_syn_all = []
-                # loss = torch.tensor(0.0).to(args.device)
-                # for c in range(num_classes):
-                #     img_real = get_images(c, args.batch_real)
-                #     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
-
-                #     img_syn= BatchAug(img_syn, args.batch_aug_syn)
-
-                #     if args.dsa:
-                #         seed = int(time.time() * 1000) % 100000
-                #         img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
-                #         img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
-
-                #     images_real_all.append(img_real)
-                #     images_syn_all.append(img_syn)
-
-                # images_real_all = torch.cat(images_real_all, dim=0)
-                # images_syn_all = torch.cat(images_syn_all, dim=0)
-
-                # output_real = embed(images_real_all).detach()
-                # if args.flip_feat:
-                #     output_syn = net.features(images_syn_all)
-                #     output_syn = torch.cat([output_syn, torch.flip(output_syn, dims=[3])], dim=0)
-                #     output_syn = output_syn.view(output_syn.size(0), -1)
-                # else:
-                #     output_syn = embed(images_syn_all)
-
-                # loss += torch.sum((torch.mean(output_real.reshape(num_classes, args.batch_real, -1), dim=1) - torch.mean(output_syn.reshape(num_classes, args.ipc, -1), dim=1))**2)
-
-                # optimizer_img.zero_grad()
-                # loss.backward()
-                # optimizer_img.step()
-                # loss_avg += loss.item()
             
-
-
             loss_avg /= (num_classes)
 
             if it%10 == 0:
@@ -265,13 +212,12 @@ def main():
 
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:
-        for metric in eval_method:
-            accs = accs_all_exps[metric][key]
-            print(f"Accuracy_{metric}")
-            print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
+        accs = accs_all_exps[key]
+        print(f"Accuracy")
+        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
         # log the final accuracy
-        data = [[f"{metric}_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[metric][key])*100, np.std(accs_all_exps[metric][key])*100)] for metric in eval_method]
+        data = [[f"{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)]]
         table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
         wandb.log({f"Final Results {key}" : table})
         
