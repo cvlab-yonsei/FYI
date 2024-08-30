@@ -31,7 +31,7 @@ def main():
     parser.add_argument('--data_path', type=str, default='/dataset', help='dataset path')
     parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric')
     parser.add_argument('--device', type=str, default='0', help='device number')
-    parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
+    parser.add_argument('--run_name', type=str, default='DM', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
 
     args = parser.parse_args()
@@ -70,7 +70,6 @@ def main():
     wandb.init(sync_tensorboard=False,
                project="DatasetDistillation",
                job_type="CleanRepo",
-               entity="eecvlab",
                config=args,
                tags=args.run_tags.split('_')
                )
