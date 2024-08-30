@@ -8,7 +8,6 @@ weight/
 ipynb/
 *.ipynb
 scripts/test/
-*.sh
 *buffer*/
 
 # Byte-compiled / optimized / DLL files
