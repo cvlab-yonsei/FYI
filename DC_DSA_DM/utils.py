@@ -66,32 +66,6 @@ def get_dataset(dataset, data_path):
         class_names = dst_train.classes
 
     elif dataset == 'TinyImageNet':
-        # channel = 3
-        # im_size = (64, 64)
-        # num_classes = 200
-        # mean = [0.485, 0.456, 0.406]
-        # std = [0.229, 0.224, 0.225]
-        # data = torch.load(os.path.join(data_path, 'tinyimagenet.pt'), map_location='cpu')
-
-        # class_names = data['classes']
-
-        # images_train = data['images_train']
-        # labels_train = data['labels_train']
-        # images_train = images_train.detach().float() / 255.0
-        # labels_train = labels_train.detach()
-        # for c in range(channel):
-        #     images_train[:,c] = (images_train[:,c] - mean[c])/std[c]
-        # dst_train = TensorDataset(images_train, labels_train)  # no augmentation
-
-        # images_val = data['images_val']
-        # labels_val = data['labels_val']
-        # images_val = images_val.detach().float() / 255.0
-        # labels_val = labels_val.detach()
-
-        # for c in range(channel):
-        #     images_val[:, c] = (images_val[:, c] - mean[c]) / std[c]
-
-        # dst_test = TensorDataset(images_val, labels_val)  # no augmentation
         channel = 3
         im_size = (64, 64)
         num_classes = 200
@@ -350,34 +324,18 @@ def get_loops(ipc):
     return outer_loop, inner_loop
 
 
-def BatchAug(img, lab, batch_aug='Standard'):
+def BatchAug(img, lab):
     # img: (N, C, H, W)
-    
-    if batch_aug == 'Standard':
-        return img, lab
-
-    elif batch_aug in ['FlipBatch', 'FlipBatchBT']:
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-        if lab is not None:
-            lab = torch.cat([lab, lab], dim=0)
-        return img, lab
-    
-    elif batch_aug == 'Flip':
-        randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
-        img = torch.where(randf < 0.5, img.flip(3), img)
-        return img, lab
-    
-    else:
-        raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
+    img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+    if lab is not None:
+        lab = torch.cat([lab, lab], dim=0)
+    return img, lab
     
 
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug='Standard'):
+def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug=False):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)
-
-    if batch_aug == 'FlipBatchSyn':
-        batch_aug = 'Flip'
 
     if mode == 'train':
         net.train()
@@ -387,8 +345,9 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug='Sta
     for i_batch, datum in enumerate(dataloader):
         img = datum[0].float().to(args.device)
         lab = datum[1].long().to(args.device)
-
-        img, lab = BatchAug(img, lab, batch_aug=batch_aug)
+        
+        if batch_aug:
+            img, lab = BatchAug(img, lab)
 
         if aug:
             if args.dsa:
@@ -417,7 +376,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, batch_aug='Sta
 
 
 
-def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, batch_aug='Standard'):
+def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     net = net.to(args.device)
     images_train = images_train.to(args.device)
     labels_train = labels_train.to(args.device)
@@ -432,7 +391,7 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, 
 
     start = time.time()
     for ep in range(Epoch+1):
-        loss_train, acc_train = epoch('train', trainloader, net, optimizer, criterion, args, aug = True, batch_aug=batch_aug)
+        loss_train, acc_train = epoch('train', trainloader, net, optimizer, criterion, args, aug = True, batch_aug=False)
         if ep in lr_schedule:
             lr *= 0.1
             optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
@@ -595,6 +554,9 @@ def DiffAugment(x, strategy='', seed = -1, param = None):
                     x = f(x, param)
         elif param.aug_mode == 'S':
             pbties = strategy.split('_')
+            if 'flip' in pbties:
+                pbties.remove('flip')
+                x = rand_flip(x, param)
             set_seed_DiffAug(param)
             p = pbties[torch.randint(0, len(pbties), size=(1,)).item()]
             for f in AUGMENT_FNS[p]:

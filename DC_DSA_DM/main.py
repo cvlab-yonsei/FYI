@@ -34,10 +34,6 @@ def main():
     parser.add_argument('--device', type=str, default='0', help='device number')
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
-    parser.add_argument('--batch_aug_syn', type=str, default='Standard', help='type of the batch augmentation for synthesizing images')
-    parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation for training networks')
-    parser.add_argument('--batch_aug_real', type=str, default='Standard', help='type of the batch augmentation for real data')
-    parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = get_loops(args.ipc)
     if args.dataset == 'CIFAR100' and args.ipc == 50:
@@ -48,11 +44,6 @@ def main():
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.dsa_param = ParamDiffAug()
     args.dsa = True if args.method == 'DSA' else False
-    eval_method = args.eval_method.split('_')
-
-    # Reduce batch size if batch augmentation is used
-    if args.batch_aug == 'FlipBatch':
-        args.batch_train = args.batch_train//2
 
     # Downloading should be already done
     if not os.path.exists(args.data_path):
@@ -71,10 +62,8 @@ def main():
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
     accs_all_exps = dict() # record performances of all experiments
-    for metric in eval_method:
-        accs_all_exps[metric] = dict()
-        for key in model_eval_pool:
-            accs_all_exps[metric][key] = []
+    for key in model_eval_pool:
+        accs_all_exps[key] = []
 
     data_save = []
 
@@ -166,19 +155,17 @@ def main():
                     else:
                         args.epoch_eval_train = 300
 
-                    for metric in eval_method:
-                        print(f'Evaluate by {metric} method')
-                        accs = []
-                        for it_eval in range(args.num_eval):
-                            net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                            image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                            _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, batch_aug=metric)
-                            accs.append(acc_test)
-                        print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
-                        wandb.log({f'Accuracy_{metric}_default/{model_eval}': np.mean(accs)}, step=exp)
-                        wandb.log({f'Std_{metric}_default/{model_eval}': np.std(accs)}, step=exp)
-                        if it == args.Iteration: # record the final results
-                            accs_all_exps[metric][model_eval] += accs
+                    accs = []
+                    for it_eval in range(args.num_eval):
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
+                        accs.append(acc_test)
+                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                    wandb.log({f'Accuracy/{model_eval}': np.mean(accs)}, step=exp)
+                    wandb.log({f'Std/{model_eval}': np.std(accs)}, step=exp)
+                    if it == args.Iteration: # record the final results
+                        accs_all_exps[model_eval] += accs
 
                 ''' visualize and save '''
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
@@ -229,9 +216,9 @@ def main():
                     lab_real = torch.ones((img_real.shape[0],), device=args.device, dtype=torch.long) * c
                     img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
                     lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
-
-                    img_real, lab_real = BatchAug(img_real, lab_real, args.batch_aug_real)
-                    img_syn, lab_syn = BatchAug(img_syn, lab_syn, args.batch_aug_syn)
+                    
+                    # FYI: concatenate the flipped images
+                    img_syn, lab_syn = BatchAug(img_syn, lab_syn)
 
                     if args.dsa:
                         seed = int(time.time() * 1000) % 100000
@@ -262,7 +249,7 @@ def main():
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
                 trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
                 for il in range(args.inner_loop):
-                    epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False, batch_aug=args.batch_aug)
+                    epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False, batch_aug=True)
 
 
             loss_avg /= (num_classes*args.outer_loop)
@@ -277,13 +264,12 @@ def main():
 
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:
-        for metric in eval_method:
-            accs = accs_all_exps[metric][key]
-            print(f"Accuracy_{metric}")
-            print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
+        accs = accs_all_exps[key]
+        print(f"Accuracy")
+        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
         # log the final accuracy
-        data = [[f"{metric}_{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[metric][key])*100, np.std(accs_all_exps[metric][key])*100)] for metric in eval_method]
+        data = [[f"{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)]]
         table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
         wandb.log({f"Final Results {key}" : table})
         
