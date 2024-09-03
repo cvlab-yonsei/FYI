@@ -215,10 +215,10 @@ def main():
         print(f"Accuracy")
         print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
-        # log the final accuracy
-        data = [[f"{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)]]
-        table = wandb.Table(data=data, columns = ["Evaluation", "Accuracy"])
-        wandb.log({f"Final Results {key}" : table})
+    # log the final accuracy
+    data = [[f"{key}", '%.2f (%.2f)'%(np.mean(accs_all_exps[key])*100, np.std(accs_all_exps[key])*100)] for key in model_eval_pool]
+    table = wandb.Table(data=data, columns = ["Evaluation Model", "Accuracy"])
+    wandb.log({f"Final Results" : table})
         
     wandb.finish()
 
