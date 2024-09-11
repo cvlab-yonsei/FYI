@@ -301,28 +301,14 @@ def get_network(model, channel, num_classes, im_size=(32, 32), dist=True):
 def get_time():
     return str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
 
-
-def BatchAug(img, lab, batch_aug='Standard'):
+def BatchAug(img, lab):
     # img: (N, C, H, W)
-    
-    if batch_aug == 'Standard':
-        return img, lab
-
-    elif batch_aug in ['FlipBatch', 'FlipBatchBT', 'FlipBatchSyn']:
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+    img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+    if lab is not None:
         lab = torch.cat([lab, lab], dim=0)
-        return img, lab
-    
-    elif batch_aug == 'Flip':
-        randf = torch.rand(img.size(0), 1, 1, 1, device=img.device)
-        img = torch.where(randf < 0.5, img.flip(3), img)
-        return img, lab
+    return img, lab
 
-    else:
-        raise NotImplementedError('batch augmentation %s is not implemented'%batch_aug)
-
-
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False, batch_aug='Standard'):
+def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False, batch_aug=False):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
 
@@ -342,7 +328,8 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False,
             img = torch.cat([torch.stack([torch.roll(im, (torch.randint(args.im_size[0]*args.canvas_size, (1,)), torch.randint(args.im_size[0]*args.canvas_size, (1,))), (1,2))[:,:args.im_size[0],:args.im_size[1]] for im in img]) for _ in range(args.canvas_samples)])
             lab = torch.cat([lab for _ in range(args.canvas_samples)])
 
-        img, lab = BatchAug(img, lab, batch_aug=batch_aug)
+        if batch_aug:
+            img, lab = BatchAug(img, lab)
 
         if aug:
             if args.dsa:
@@ -376,7 +363,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug, texture=False,
 
 
 
-def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, return_loss=False, texture=False, batch_aug='Standard'):
+def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, return_loss=False, texture=False):
     net = net.to(args.device)
     images_train = images_train.to(args.device)
     labels_train = labels_train.to(args.device)
@@ -395,12 +382,12 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args, 
     loss_train_list = []
 
     for ep in tqdm.tqdm(range(Epoch+1)):
-        loss_train, acc_train = epoch('train', trainloader, net, optimizer, criterion, args, aug=True, texture=texture, batch_aug=batch_aug)
+        loss_train, acc_train = epoch('train', trainloader, net, optimizer, criterion, args, aug=True, texture=texture, batch_aug=False)
         acc_train_list.append(acc_train)
         loss_train_list.append(loss_train)
         if ep == Epoch:
             with torch.no_grad():
-                loss_test, acc_test = epoch('test', testloader, net, optimizer, criterion, args, aug=False, batch_aug=batch_aug)
+                loss_test, acc_test = epoch('test', testloader, net, optimizer, criterion, args, aug=False, batch_aug=False)
         if ep in lr_schedule:
             lr *= 0.1
             optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
@@ -577,6 +564,9 @@ def DiffAugment(x, strategy='', seed = -1, param = None):
                     x = f(x, param)
         elif param.aug_mode == 'S':
             pbties = strategy.split('_')
+            if 'flip' in pbties:
+                pbties.remove('flip')
+                x = rand_flip(x, param)
             set_seed_DiffAug(param)
             p = pbties[torch.randint(0, len(pbties), size=(1,)).item()]
             for f in AUGMENT_FNS[p]:

@@ -3,7 +3,6 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.utils
 from tqdm import tqdm
 from utils import get_dataset, get_network, get_eval_pool, evaluate_synset, get_time, DiffAugment, ParamDiffAug, BatchAug, BatchDiffAug
@@ -31,21 +30,16 @@ def main(args):
 
     args.dsa = True if args.dsa == 'True' else False
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    eval_method = args.eval_method.split('_')
 
-    eval_it_pool = np.arange(args.first_eval, args.Iteration + 1, args.eval_it).tolist()
-    channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader, loader_train_dict, class_map, class_map_inv = get_dataset(args.dataset, args.data_path, args.batch_real, args.subset, args=args)
+    eval_it_pool = np.arange(0, args.Iteration + 1, args.eval_it).tolist()
+    channel, im_size, num_classes, _, mean, std, dst_train, _, testloader, _, class_map, _ = get_dataset(args.dataset, args.data_path, args.batch_real, args.subset, args=args)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
-
-    im_res = im_size[0]
 
     args.im_size = im_size
 
     accs_all_exps = dict() # record performances of all experiments
     for key in model_eval_pool:
         accs_all_exps[key] = []
-
-    data_save = []
 
     if args.dsa:
         # args.epoch_eval_train = 1000
@@ -85,8 +79,7 @@ def main(args):
 
     if args.batch_syn is None:
         args.batch_syn = num_classes * args.ipc
-    if args.batch_aug == "FlipBatchBT" and not args.batchaug_whole:
-        args.batch_syn = args.batch_syn // 2
+    args.batch_syn = args.batch_syn // 2
 
     args.distributed = torch.cuda.device_count() > 1
 
@@ -194,9 +187,9 @@ def main(args):
             buffer = buffer[:args.max_experts]
         random.shuffle(buffer)
 
-    best_acc = {method: {m: 0 for m in model_eval_pool} for method in eval_method}
+    best_acc = {m: 0 for m in model_eval_pool}
 
-    best_std = {method: {m: 0 for m in model_eval_pool} for method in eval_method}
+    best_std = {m: 0 for m in model_eval_pool}
 
     best_one_acc = 0
 
@@ -209,43 +202,41 @@ def main(args):
         if it in eval_it_pool:
             for model_eval in model_eval_pool:
                 print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
-                for method in eval_method:
-                    print('Evaluation method: %s'%method)
-                    if args.dsa:
-                        print('DSA augmentation strategy: \n', args.dsa_strategy)
-                        print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
-                    else:
-                        print('DC augmentation parameters: \n', args.dc_aug_param)
+                if args.dsa:
+                    print('DSA augmentation strategy: \n', args.dsa_strategy)
+                    print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
+                else:
+                    print('DC augmentation parameters: \n', args.dc_aug_param)
 
-                    accs_test = []
-                    accs_train = []
-                    for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                accs_test = []
+                accs_train = []
+                for it_eval in range(args.num_eval):
+                    net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
 
-                        eval_labs = label_syn
-                        with torch.no_grad():
-                            image_save = image_syn
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
+                    eval_labs = label_syn
+                    with torch.no_grad():
+                        image_save = image_syn
+                    image_syn_eval, label_syn_eval = copy.deepcopy(image_save.detach()), copy.deepcopy(eval_labs.detach()) # avoid any unaware modification
 
-                        args.lr_net = syn_lr.item()
-                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture, batch_aug=method)
-                        accs_test.append(acc_test)
-                        accs_train.append(acc_train)
-                    accs_test = np.array(accs_test)
-                    accs_train = np.array(accs_train)
-                    acc_test_mean = np.mean(accs_test)
-                    acc_test_std = np.std(accs_test)
-                    if acc_test_mean > best_acc[method][model_eval]:
-                        best_acc[method][model_eval] = acc_test_mean
-                        best_std[method][model_eval] = acc_test_std
-                    if acc_test_mean > best_one_acc:
-                        save_this_it = True
-                        best_one_acc = acc_test_mean
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_test), model_eval, acc_test_mean, acc_test_std))
-                    wandb.log({f'Accuracy {method}/{model_eval}': acc_test_mean}, step=it)
-                    wandb.log({f'Max_Accuracy {method}/{model_eval}': best_acc[method][model_eval]}, step=it)
-                    wandb.log({f'Std {method}/{model_eval}': acc_test_std}, step=it)
-                    wandb.log({f'Max_Std {method}/{model_eval}': best_std[method][model_eval]}, step=it)
+                    args.lr_net = syn_lr.item()
+                    _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args, texture=args.texture)
+                    accs_test.append(acc_test)
+                    accs_train.append(acc_train)
+                accs_test = np.array(accs_test)
+                accs_train = np.array(accs_train)
+                acc_test_mean = np.mean(accs_test)
+                acc_test_std = np.std(accs_test)
+                if acc_test_mean > best_acc[model_eval]:
+                    best_acc[model_eval] = acc_test_mean
+                    best_std[model_eval] = acc_test_std
+                if acc_test_mean > best_one_acc:
+                    save_this_it = True
+                    best_one_acc = acc_test_mean
+                print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs_test), model_eval, acc_test_mean, acc_test_std))
+                wandb.log({f'Accuracy {model_eval}': acc_test_mean}, step=it)
+                wandb.log({f'Max_Accuracy {model_eval}': best_acc[model_eval]}, step=it)
+                wandb.log({f'Std {model_eval}': acc_test_std}, step=it)
+                wandb.log({f'Max_Std {model_eval}': best_std[model_eval]}, step=it)
 
 
         if it in eval_it_pool and (save_this_it or it % 1000 == 0):
@@ -354,16 +345,11 @@ def main(args):
 
         starting_params = torch.cat([p.data.to(args.device).reshape(-1) for p in starting_params], 0)
 
-        if args.batchaug_whole:
-            syn_images, y_hat = BatchAug(image_syn, label_syn, args.batch_aug)
-        else:
-            syn_images = image_syn
-            y_hat = label_syn.to(args.device)
+        syn_images = image_syn
+        y_hat = label_syn.to(args.device)
 
         x_list = []
         y_list = []
-        param_loss_list = []
-        param_dist_list = []
         indices_chunks = []
         indices_chunks_copy = []
         original_x_list = []
@@ -375,7 +361,6 @@ def main(args):
 
         gc.collect()
 
-        syn_label_grad = torch.zeros(label_syn.shape).to(args.device).requires_grad_(False)
         syn_images_grad = torch.zeros(syn_images.shape).requires_grad_(False).to(args.device)
 
         for il in range(args.syn_steps):
@@ -392,8 +377,7 @@ def main(args):
             original_x_list.append(x)
 
             # batch augmentation
-            if not args.batchaug_whole:
-                x, this_y = BatchAug(x, this_y, args.batch_aug)
+            x, this_y = BatchAug(x, this_y)
 
             x = DiffAugment(x, args.dsa_strategy, param=args.dsa_param)
 
@@ -465,9 +449,6 @@ def main(args):
         optimizer_lr.zero_grad()
 
         image_syn.requires_grad_(True)
-
-        if args.batchaug_whole and args.batch_aug == "FlipBatchBT":
-            syn_images_grad = syn_images_grad[:len(image_syn)] + torch.flip(syn_images_grad[len(image_syn):], dims=[3])
 
         image_syn.grad = syn_images_grad.detach().clone()
 
@@ -563,10 +544,6 @@ if __name__ == '__main__':
     parser.add_argument('--run_name', type=str, default='MTT', help='name of the run')
     parser.add_argument('--run_tags', type=str, default=None, help='name of the run')
     parser.add_argument('--batch_aug', type=str, default='Standard', help='type of the batch augmentation')
-    parser.add_argument('--eval_method', type=str, default='Standard_Flip_FlipBatchBT', help='evaluation method')
-
-    parser.add_argument('--first_eval', type=int, default=0, help='first iteration to evaluate on')
-    parser.add_argument('--batchaug_whole', action='store_true', help='whether to use batchaug on mini-batch or on the whole data')
 
     args = parser.parse_args()
 
