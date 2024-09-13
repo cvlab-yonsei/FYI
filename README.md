@@ -31,7 +31,7 @@ cd MTT
 ```
 
 ## Acknowledgement
-This implementation is built on [DC/DSA/DM](https://github.com/VICO-UoE/DatasetCondensation) and [MTT](https://github.com/georgecazenavette/mtt-distillation). We also applied our method to [IDC](https://github.com/snu-mllab/efficient-dataset-condensation) and [FTD](https://github.com/AngusDujw/FTD-distillation) in our paper. We thank the authors and contributors of these projects.
+This implementation is built on [DC/DSA/DM](https://github.com/VICO-UoE/DatasetCondensation) and [MTT](https://github.com/georgecazenavette/mtt-distillation). We also applied our method to [IDC](https://github.com/snu-mllab/efficient-dataset-condensation) and [FTD](https://github.com/AngusDujw/FTD-distillation) and presented the results in our paper. We thank the authors and contributors of these projects.
 
 ## Citation
 If you find our work useful for your research, please cite our paper:
