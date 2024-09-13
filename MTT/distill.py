@@ -31,7 +31,7 @@ def main(args):
     args.dsa = True if args.dsa == 'True' else False
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    eval_it_pool = np.arange(0, args.Iteration + 1, args.eval_it).tolist()
+    eval_it_pool = np.arange(5000, args.Iteration + 1, args.eval_it).tolist()
     channel, im_size, num_classes, _, mean, std, dst_train, _, testloader, _, class_map, _ = get_dataset(args.dataset, args.data_path, args.batch_real, args.subset, args=args)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
@@ -161,7 +161,7 @@ def main(args):
         buffer = []
         n = 0
         while os.path.exists(os.path.join(expert_dir, "replay_buffer_{}.pt".format(n))):
-            buffer = buffer + torch.load(os.path.join(expert_dir, "replay_buffer_{}.pt".format(n)))
+            buffer = buffer + torch.load(os.path.join(expert_dir, "replay_buffer_{}.pt".format(n)), weights_only=False)
             n += 1
         if n == 0:
             raise AssertionError("No buffers detected at {}".format(expert_dir))
@@ -182,7 +182,7 @@ def main(args):
         if args.max_files is not None:
             expert_files = expert_files[:args.max_files]
         print("loading file {}".format(expert_files[file_idx]))
-        buffer = torch.load(expert_files[file_idx])
+        buffer = torch.load(expert_files[file_idx], weights_only=False)
         if args.max_experts is not None:
             buffer = buffer[:args.max_experts]
         random.shuffle(buffer)
@@ -329,7 +329,7 @@ def main(args):
                 print("loading file {}".format(expert_files[file_idx]))
                 if args.max_files != 1:
                     del buffer
-                    buffer = torch.load(expert_files[file_idx])
+                    buffer = torch.load(expert_files[file_idx], weights_only=False)
                 if args.max_experts is not None:
                     buffer = buffer[:args.max_experts]
                 random.shuffle(buffer)
