@@ -53,8 +53,6 @@ def main():
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
-    eval_it_pool = [args.Iteration] # The list of iterations when we evaluate models and record results.
-    print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
@@ -135,7 +133,7 @@ def main():
             wandb.log({"Progress": exp}, step=exp)
 
             ''' Evaluate synthetic data '''
-            if it in eval_it_pool:
+            if it == args.Iteration:
                 for model_eval in model_eval_pool:
                     print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
 
@@ -163,8 +161,7 @@ def main():
                 image_syn_vis[image_syn_vis>1] = 1.0
                 save_image(image_syn_vis, save_name, nrow=10) # Trying normalize = True/False may get better visual effects.
                 wandb.log({"Synthetic_Images": wandb.Image(make_grid(image_syn_vis, nrow=10))}, step=exp)
-
-
+                break
 
             ''' Train synthetic data '''
             net = get_network(args.model, channel, num_classes, im_size).to(args.device) # get a random model

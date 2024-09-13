@@ -55,10 +55,7 @@ def main():
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
-    #eval_it_pool = np.arange(0, args.Iteration+1, 500).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
-    eval_it_pool = [args.Iteration]
-    print('eval_it_pool: ', eval_it_pool)
-    channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
+    channel, im_size, num_classes, _, mean, std, dst_train, _, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
     accs_all_exps = dict() # record performances of all experiments
@@ -137,7 +134,7 @@ def main():
             wandb.log({"Progress": exp}, step=exp)
 
             ''' Evaluate synthetic data '''
-            if it in eval_it_pool:
+            if it == args.Iteration:
                 for model_eval in model_eval_pool:
                     print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
                     if args.dsa:
@@ -175,6 +172,7 @@ def main():
                 image_syn_vis[image_syn_vis>1] = 1.0
                 save_image(image_syn_vis, save_name, nrow=10) # Trying normalize = True/False may get better visual effects.
                 wandb.log({"Synthetic_Images": wandb.Image(make_grid(image_syn_vis, nrow=10))}, step=exp)
+                break
 
 
             ''' Train synthetic data '''
