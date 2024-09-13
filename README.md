@@ -8,7 +8,7 @@ Please install packages in the requirements.
 
 ## Getting started
 - Prepare the dataset in `/dataset` directory for experiments on `Tiny-ImageNet` and `ImageNet subset`.
-- Run the provided scripts as below. Modify the command lines as needed.
+- Run the provided scripts as below. Modify the scripts for different settings.
 ### DC, DSA, and DM
 ```
 cd DC_DSA_DM
@@ -18,6 +18,16 @@ cd DC_DSA_DM
 
 # DSA for 10 IPC on CIFAR-10
 ./scripts/dsa.sh
+```
+### MTT
+```
+cd MTT
+
+# Generating teacher trajectories on CIFAR-10 using ZCA whitening
+./scripts/buffer.sh
+
+# MTT for 1 IPC on CIFAR-10
+./scripts/distill.sh
 ```
 
 ## Acknowledgement
