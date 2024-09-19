@@ -8,7 +8,6 @@ import torch.nn as nn
 from torchvision.utils import save_image, make_grid
 from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug, BatchAug
 import wandb
-from OT import SinkhornDistance
 
 
 def main():
